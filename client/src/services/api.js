@@ -4,14 +4,14 @@ export const SERVER_BASE_URL = (() => {
   }
   if (
     typeof window !== 'undefined' &&
-    (window.location.protocol === 'file:' ||
-      !window.location.hostname ||
-      window.location.hostname === 'localhost' ||
-      window.location.hostname === '127.0.0.1')
+    window.location.origin &&
+    window.location.origin.startsWith('http') &&
+    window.location.hostname !== 'localhost' &&
+    window.location.hostname !== '127.0.0.1'
   ) {
-    return 'http://localhost:3001';
+    return window.location.origin;
   }
-  return window.location.origin;
+  return 'https://concord-l08s.onrender.com';
 })();
 
 export const API_BASE = `${SERVER_BASE_URL}/api`;

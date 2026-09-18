@@ -33,19 +33,21 @@ function createWindow() {
     }
   });
 
+  const CLOUD_URL = process.env.CONCORD_URL || 'https://concord-l08s.onrender.com';
   const localUiPath = path.join(__dirname, 'ui', 'index.html');
   const fallbackDistPath = path.join(__dirname, '..', 'client', 'dist', 'index.html');
-  const remoteUrl = process.env.CONCORD_URL;
 
-  if (remoteUrl) {
-    mainWindow.loadURL(remoteUrl);
-  } else if (fs.existsSync(localUiPath)) {
-    mainWindow.loadFile(localUiPath);
-  } else if (fs.existsSync(fallbackDistPath)) {
-    mainWindow.loadFile(fallbackDistPath);
-  } else {
-    mainWindow.loadURL('http://localhost:5173');
-  }
+  // Carrega diretamente a versão da nuvem (garante atualizações instantâneas automáticas para todos)
+  mainWindow.loadURL(CLOUD_URL).catch((err) => {
+    console.log('Sem conexão com a nuvem, carregando interface local...', err);
+    if (fs.existsSync(localUiPath)) {
+      mainWindow.loadFile(localUiPath);
+    } else if (fs.existsSync(fallbackDistPath)) {
+      mainWindow.loadFile(fallbackDistPath);
+    } else {
+      mainWindow.loadURL('http://localhost:5173');
+    }
+  });
 
   // Atalho F12 para abrir ferramentas de desenvolvedor se necessário
   mainWindow.webContents.on('before-input-event', (event, input) => {

@@ -1,0 +1,204 @@
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
+import { io } from 'socket.io-client';
+import { useAuth } from './AuthContext';
+import { apiFetch, SERVER_BASE_URL } from '../services/api';
+
+const SocketContext = createContext(null);
+
+export const SocketProvider = ({ children }) => {
+  const { user, setUser } = useAuth();
+  const [socket, setSocket] = useState(null);
+  const [onlineUsers, setOnlineUsers] = useState([]);
+  const [channels, setChannels] = useState([]);
+  const [activeChannelId, setActiveChannelId] = useState(null);
+  const [messages, setMessages] = useState({});
+  const [unreadChatCount, setUnreadChatCount] = useState(0);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+
+  // Carrega canais do servidor
+  const loadChannels = useCallback(async () => {
+    try {
+      const data = await apiFetch('/channels');
+      setChannels(data.channels);
+      // Se não houver canal ativo selecionado, seleciona o primeiro por padrão
+      if (data.channels.length > 0 && !activeChannelId) {
+        const defaultVoice = data.channels.find(c => c.type === 'voice') || data.channels[0];
+        setActiveChannelId(defaultVoice.id);
+      }
+    } catch (err) {
+      console.error('Erro ao carregar canais:', err);
+    }
+  }, [activeChannelId]);
+
+  // Carrega mensagens do canal ativo
+  const loadMessages = useCallback(async (channelId) => {
+    if (!channelId) return;
+    try {
+      const data = await apiFetch(`/channels/${channelId}/messages`);
+      setMessages(prev => ({
+        ...prev,
+        [channelId]: data.messages
+      }));
+    } catch (err) {
+      console.error('Erro ao carregar mensagens:', err);
+    }
+  }, []);
+
+  // Conexão com Socket.io
+  useEffect(() => {
+    if (!user) {
+      if (socket) socket.disconnect();
+      setSocket(null);
+      return;
+    }
+
+    loadChannels();
+
+    const newSocket = io(SERVER_BASE_URL, {
+      transports: ['websocket', 'polling']
+    });
+
+    newSocket.on('connect', () => {
+      console.log('⚡ Conectado ao servidor Concord WebSocket');
+      newSocket.emit('join_server', { userId: user.id });
+    });
+
+    newSocket.on('online_users_updated', (users) => {
+      setOnlineUsers(users);
+    });
+
+    newSocket.on('new_message', ({ message }) => {
+      setMessages(prev => {
+        const channelMsgs = prev[message.channelId] || [];
+        return {
+          ...prev,
+          [message.channelId]: [...channelMsgs, message]
+        };
+      });
+
+      if (!isChatOpen) {
+        setUnreadChatCount(prev => prev + 1);
+      }
+    });
+
+    // Moderação recebida: você foi mutado pelo servidor
+    newSocket.on('you_were_server_muted', ({ isServerMuted }) => {
+      setUser(prev => prev ? { ...prev, isServerMuted } : null);
+    });
+
+    // Moderação recebida: você foi movido para outro canal
+    newSocket.on('force_change_channel', ({ targetChannelId }) => {
+      setActiveChannelId(targetChannelId);
+      newSocket.emit('join_channel', { channelId: targetChannelId });
+    });
+
+    // Moderação recebida: você foi desconectado da voz
+    newSocket.on('force_leave_voice', () => {
+      setActiveChannelId(null);
+      newSocket.emit('leave_channel');
+    });
+
+    setSocket(newSocket);
+
+    return () => {
+      newSocket.disconnect();
+    };
+  }, [user]);
+
+  // Sincroniza mensagens ao trocar de canal
+  useEffect(() => {
+    if (activeChannelId) {
+      loadMessages(activeChannelId);
+      if (socket) {
+        socket.emit('join_channel', { channelId: activeChannelId });
+      }
+    }
+  }, [activeChannelId, socket]);
+
+  const joinChannel = (channelId) => {
+    setActiveChannelId(channelId);
+    if (socket) {
+      socket.emit('join_channel', { channelId });
+    }
+  };
+
+  const leaveChannel = () => {
+    setActiveChannelId(null);
+    if (socket) {
+      socket.emit('leave_channel');
+    }
+  };
+
+  const sendMessage = (channelId, content, attachmentUrl = null, attachmentType = null) => {
+    if (socket) {
+      socket.emit('send_message', {
+        channelId,
+        content,
+        attachmentUrl,
+        attachmentType
+      });
+    }
+  };
+
+  // Moderação via Drag & Drop ou Context Menu
+  const adminMoveUser = (targetUserId, targetChannelId) => {
+    if (socket) {
+      socket.emit('admin_drag_move_user', { targetUserId, targetChannelId });
+    }
+  };
+
+  const adminServerMute = (targetUserId, mute) => {
+    if (socket) {
+      socket.emit('admin_server_mute', { targetUserId, mute });
+    }
+  };
+
+  const adminKickVoice = (targetUserId) => {
+    if (socket) {
+      socket.emit('admin_kick_voice', { targetUserId });
+    }
+  };
+
+  const broadcastProfileUpdate = (profileData) => {
+    if (socket) {
+      socket.emit('update_profile_broadcast', profileData);
+    }
+  };
+
+  const activeChannel = channels.find(c => c.id === activeChannelId);
+
+  return (
+    <SocketContext.Provider
+      value={{
+        socket,
+        onlineUsers,
+        channels,
+        activeChannelId,
+        activeChannel,
+        messages: messages[activeChannelId] || [],
+        unreadChatCount,
+        setUnreadChatCount,
+        isChatOpen,
+        setIsChatOpen,
+        joinChannel,
+        leaveChannel,
+        sendMessage,
+        adminMoveUser,
+        adminServerMute,
+        adminKickVoice,
+        broadcastProfileUpdate,
+        refreshChannels: loadChannels
+      }}
+    >
+      {children}
+    </SocketContext.Provider>
+  );
+};
+
+export const useSocket = () => {
+  const context = useContext(SocketContext);
+  if (!context) {
+    throw new Error('useSocket deve ser usado dentro de um SocketProvider');
+  }
+  return context;
+};

@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: concord
+    env: node
+    plan: free
+    region: ohio
+    buildCommand: npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 20.x
+      - key: DATABASE_URL
+        value: file:./dev.db
+      - key: JWT_SECRET
+        generateValue: true

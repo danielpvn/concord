@@ -1,0 +1,17 @@
+{
+  "name": "concord",
+  "version": "1.0.1",
+  "description": "Hub Privado Gamer de Voz, Tela e Chat para Amigos",
+  "main": "server/src/server.js",
+  "scripts": {
+    "dev": "concurrently --kill-others-on-fail --names \"SERVER,CLIENT\" --prefix-colors \"blue,green\" \"npm --prefix server run dev\" \"npm --prefix client run dev\"",
+    "start": "node server/src/server.js",
+    "server": "npm --prefix server run dev",
+    "client": "npm --prefix client run dev",
+    "build": "npm run build --prefix client && npm run prisma:generate --prefix server",
+    "desktop:start": "npm --prefix desktop start"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

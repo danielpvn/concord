@@ -1,0 +1,43 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String    @id @default(uuid())
+  username       String    @unique
+  password       String
+  avatarColor    String    @default("#6366f1")
+  avatarUrl      String?
+  role           String    @default("MEMBER") // OWNER, ADMIN, MEMBER
+  isServerMuted  Boolean   @default(false)
+  currentChannel String?   // ID do canal em que o usuário está
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  messages       Message[]
+}
+
+model Channel {
+  id        String    @id @default(uuid())
+  name      String
+  type      String    @default("voice") // "voice" | "text"
+  order     Int       @default(0)
+  createdAt DateTime  @default(now())
+  messages  Message[]
+}
+
+model Message {
+  id             String   @id @default(uuid())
+  content        String
+  attachmentUrl  String?
+  attachmentType String?  // "image" | "file"
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channelId      String
+  channel        Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now())
+}

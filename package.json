@@ -8,7 +8,7 @@
     "start": "node server/src/server.js",
     "server": "npm --prefix server run dev",
     "client": "npm --prefix client run dev",
-    "build": "npm install --prefix server && npm install --prefix client && npm run build --prefix client && npm run prisma:generate --prefix server",
+    "build": "npm install --include=dev --prefix server && npm install --include=dev --prefix client && npm run prisma:push --prefix server && npm run prisma:generate --prefix server && npm run build --prefix client",
     "desktop:start": "npm --prefix desktop start"
   },
   "devDependencies": {

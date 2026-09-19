@@ -3,6 +3,7 @@ import { useSocket } from '../../context/SocketContext';
 import { useAuth } from '../../context/AuthContext';
 import { Avatar } from '../ui/Avatar';
 import { uploadFile, getFullMediaUrl } from '../../services/api';
+import { areMessageSoundsEnabled, setMessageSoundsEnabled } from '../../services/sounds';
 import {
   X,
   Send,
@@ -12,7 +13,9 @@ import {
   Shield,
   UploadCloud,
   ExternalLink,
-  Trash2
+  Trash2,
+  Bell,
+  BellOff
 } from 'lucide-react';
 
 export const ChatDrawer = () => {
@@ -21,6 +24,14 @@ export const ChatDrawer = () => {
   const [inputText, setInputText] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
+  const [messageSoundsOn, setMessageSoundsOn] = useState(areMessageSoundsEnabled);
+
+  // Mantém o sino sincronizado com a opção nas Configurações
+  useEffect(() => {
+    const sync = () => setMessageSoundsOn(areMessageSoundsEnabled());
+    window.addEventListener('concord-sound-settings', sync);
+    return () => window.removeEventListener('concord-sound-settings', sync);
+  }, []);
 
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -116,13 +127,24 @@ export const ChatDrawer = () => {
           </h3>
           <p className="text-[10px] text-slate-400">Mensagens e Imagens da Web</p>
         </div>
-        <button
-          onClick={() => setIsChatOpen(false)}
-          title="Fechar chat"
-          className="p-2 -mr-1 rounded-lg text-slate-400 hover:text-white hover:bg-gaming-800 transition"
-        >
-          <X className="w-5 h-5 md:w-4 md:h-4" />
-        </button>
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <button
+            onClick={() => setMessageSoundsEnabled(!messageSoundsOn)}
+            title={messageSoundsOn ? 'Silenciar som de mensagens' : 'Ativar som de mensagens'}
+            aria-label={messageSoundsOn ? 'Silenciar som de mensagens' : 'Ativar som de mensagens'}
+            className={`p-2 rounded-lg transition ${messageSoundsOn ? 'text-slate-400 hover:text-white hover:bg-gaming-800' : 'text-red-400 bg-red-500/10 hover:bg-red-500/20'}`}
+          >
+            {messageSoundsOn ? <Bell className="w-5 h-5 md:w-4 md:h-4" /> : <BellOff className="w-5 h-5 md:w-4 md:h-4" />}
+          </button>
+          <button
+            onClick={() => setIsChatOpen(false)}
+            title="Fechar chat"
+            aria-label="Fechar chat"
+            className="p-2 -mr-1 rounded-lg text-slate-400 hover:text-white hover:bg-gaming-800 transition"
+          >
+            <X className="w-5 h-5 md:w-4 md:h-4" />
+          </button>
+        </div>
       </div>
 
       {/* Lista de Mensagens */}

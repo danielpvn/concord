@@ -72,9 +72,11 @@ O **Concord** é uma plataforma privada de comunicação para gamers inspirada n
 - **Microfone**: A faixa local `audioTrack.enabled` deve permanecer `true` enquanto o usuário não estiver explicitamente mutado (`isMuted` ou `isServerMuted`).
 - **Filtros WebRTC**: Devem sempre incluir `{ echoCancellation: true, noiseSuppression: true, autoGainControl: true, googNoiseSuppression: true, googEchoCancellation: true }`.
 - **Reprodução Remota**: `RemoteAudioRenderer.jsx` renderiza elementos `<audio>` fora da tela com tratamento de erro em `audioEl.volume` para compatibilidade total com iOS/Safari e Android.
+- **Sons**: `services/sounds.js` (Web Audio sintetizado). Som de mensagens tem opção própria (`concord_message_sounds_enabled`), com sino no chat.
 
 ### 3.3. Compartilhamento de Tela (Screen Sharing)
-- Ao iniciar `toggleScreenShare`, o stream é transmitido ativamente para todos os peers da sala com `streamType: 'screen'`.
+- **Assistir é sob demanda**: quem transmite só envia vídeo para quem pediu. O espectador emite `screen_watch` (`watchScreen`/`stopWatchingScreen` no `VoiceContext`), o servidor repassa `screen_watch_request` para quem transmite, que abre/fecha a conexão `screen`. Opção "Assistir transmissões automaticamente" (`concord_auto_watch`).
+- Todo áudio remoto (voz e som das transmissões) toca pelo `RemoteAudioRenderer`, com volume 0–200% e mute local por `userId`. Até 100% usa `<audio>` (mantém o cancelamento de eco); acima de 100% usa Web Audio (GainNode). Os `<video>` das telas ficam sempre mudos.
 - O servidor propaga `user_screen_state_changed` e atualiza `onlineUsers`.
 - No Electron (`desktop/main.js`), `setDisplayMediaRequestHandler` abre a janela de escolha (`picker.html` + `picker-preload.cjs`) com monitores e janelas de `desktopCapturer.getSources` e a opção de som do PC (`loopback`, captura o som do sistema inteiro). Cancelar chama `callback({})`.
 - O app adiciona `ConcordDesktop/<versão>` ao User-Agent; o site usa isso para diferenciar o app antigo (sem janela de escolha).

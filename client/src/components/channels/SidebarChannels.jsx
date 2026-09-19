@@ -19,7 +19,12 @@ import {
 export const SidebarChannels = () => {
   const { channels, activeChannelId, joinChannel, onlineUsers, adminMoveUser, isMobileMenuOpen, setIsMobileMenuOpen } = useSocket();
   const { isAdmin } = useAuth();
-  const [isExpanded, setIsExpanded] = useState(false);
+  // Barra de canais aberta por padrão (lembra se a pessoa recolher)
+  const [isExpanded, setIsExpandedState] = useState(() => localStorage.getItem('concord_sidebar_expanded') !== '0');
+  const setIsExpanded = (expanded) => {
+    setIsExpandedState(expanded);
+    localStorage.setItem('concord_sidebar_expanded', expanded ? '1' : '0');
+  };
   const [dragOverChannelId, setDragOverChannelId] = useState(null);
 
   const voiceChannels = channels.filter(c => c.type === 'voice');

@@ -6,7 +6,15 @@ import { Avatar } from '../ui/Avatar';
 import { ImageCropperModal } from '../ui/ImageCropperModal';
 import { getAuthToken, apiFetch, API_BASE, SERVER_BASE_URL, getFullMediaUrl } from '../../services/api';
 import { supportsOutputSelection } from '../../context/VoiceContext';
-import { areSoundsEnabled, setSoundsEnabled, getSoundsVolume, setSoundsVolume, playSound } from '../../services/sounds';
+import {
+  areSoundsEnabled,
+  setSoundsEnabled,
+  getSoundsVolume,
+  setSoundsVolume,
+  playSound,
+  areMessageSoundsEnabled,
+  setMessageSoundsEnabled
+} from '../../services/sounds';
 import {
   X,
   Mic,
@@ -25,7 +33,8 @@ import {
   User,
   Sparkles,
   Headphones,
-  Bell
+  Bell,
+  Tv
 } from 'lucide-react';
 
 const AVATAR_COLORS = [
@@ -56,7 +65,9 @@ export const SettingsModal = ({ isOpen, onClose }) => {
     outputDeviceId,
     changeInputDevice,
     changeOutputDevice,
-    refreshDevices
+    refreshDevices,
+    autoWatchScreens,
+    updateAutoWatchScreens
   } = useVoice();
   const { broadcastProfileUpdate } = useSocket();
 
@@ -71,6 +82,14 @@ export const SettingsModal = ({ isOpen, onClose }) => {
   // Sons de notificação
   const [soundsOn, setSoundsOn] = useState(areSoundsEnabled);
   const [soundsVolume, setSoundsVolumeState] = useState(getSoundsVolume);
+  const [messageSoundsOn, setMessageSoundsOn] = useState(areMessageSoundsEnabled);
+
+  // Sincroniza com o sino do chat
+  useEffect(() => {
+    const sync = () => setMessageSoundsOn(areMessageSoundsEnabled());
+    window.addEventListener('concord-sound-settings', sync);
+    return () => window.removeEventListener('concord-sound-settings', sync);
+  }, []);
 
   // Troca de Apelido / Nome de Jogador
   const [usernameInput, setUsernameInput] = useState(user?.username || '');
@@ -654,6 +673,18 @@ export const SettingsModal = ({ isOpen, onClose }) => {
                 </label>
 
                 {soundsOn && (
+                  <label className="flex items-center gap-3 cursor-pointer pl-7">
+                    <input
+                      type="checkbox"
+                      checked={messageSoundsOn}
+                      onChange={(e) => setMessageSoundsEnabled(e.target.checked)}
+                      className="w-4 h-4 accent-indigo-500 flex-shrink-0"
+                    />
+                    <span className="text-sm md:text-xs text-white">Som de novas mensagens no chat</span>
+                  </label>
+                )}
+
+                {soundsOn && (
                   <div className="flex items-center gap-3">
                     <span className="text-[11px] text-slate-400 flex-shrink-0">Volume</span>
                     <input
@@ -674,6 +705,28 @@ export const SettingsModal = ({ isOpen, onClose }) => {
                   </div>
                 )}
               </div>
+            </div>
+
+            {/* Transmissões de Tela */}
+            <div>
+              <h3 className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <Tv className="w-4 h-4 text-red-400" />
+                Transmissões de Tela
+              </h3>
+              <label className="flex items-start gap-3 bg-gaming-950 p-3.5 rounded-xl border border-gaming-800 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={autoWatchScreens}
+                  onChange={(e) => updateAutoWatchScreens(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 accent-indigo-500 flex-shrink-0"
+                />
+                <span className="min-w-0">
+                  <span className="block text-sm md:text-xs font-semibold text-white">Assistir transmissões automaticamente</span>
+                  <span className="block text-[11px] text-slate-400 mt-0.5">
+                    Desligado: aparece um botão "Assistir" quando alguém transmite, e você só recebe o vídeo se quiser (economiza internet).
+                  </span>
+                </span>
+              </label>
             </div>
 
             {/* Seção 3: Alterar Própria Senha */}

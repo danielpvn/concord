@@ -196,6 +196,19 @@ export const setupSocketHandlers = (io) => {
       io.emit('online_users_updated', Array.from(connectedUsers.values()));
     });
 
+    // --- Assistir / parar de assistir a transmissão de alguém da mesma sala ---
+    socket.on('screen_watch', ({ sharerSocketId, watch } = {}) => {
+      const viewer = connectedUsers.get(socket.id);
+      const sharer = connectedUsers.get(sharerSocketId);
+      if (!viewer || !sharer || !viewer.channelId || viewer.channelId !== sharer.channelId) return;
+      if (watch && !sharer.isScreenSharing) return;
+
+      io.to(sharerSocketId).emit('screen_watch_request', {
+        viewerSocketId: socket.id,
+        watch: Boolean(watch)
+      });
+    });
+
     // --- Envio de Mensagem de Texto no Chat ---
     socket.on('send_message', async ({ channelId, content, attachmentUrl, attachmentType } = {}) => {
       const user = connectedUsers.get(socket.id);

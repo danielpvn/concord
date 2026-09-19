@@ -1,4 +1,4 @@
-import { app, BrowserWindow, session, desktopCapturer, globalShortcut, dialog, ipcMain } from 'electron';
+import { app, BrowserWindow, session, desktopCapturer, globalShortcut, dialog, ipcMain, screen } from 'electron';
 import updaterPkg from 'electron-updater';
 import path from 'path';
 import fs from 'fs';
@@ -127,10 +127,39 @@ function setupAutoUpdates() {
   setInterval(check, 6 * 60 * 60 * 1000);
 }
 
+// Lembra tamanho, posição e se a janela estava maximizada
+const windowStatePath = () => path.join(app.getPath('userData'), 'window-state.json');
+
+function loadWindowState() {
+  try {
+    const state = JSON.parse(fs.readFileSync(windowStatePath(), 'utf8'));
+    // Só reaproveita a posição se ela ainda cair em algum monitor (ex.: monitor desconectado)
+    const visible = screen.getAllDisplays().some(({ workArea: a }) =>
+      state.x < a.x + a.width && state.x + state.width > a.x && state.y < a.y + a.height && state.y + state.height > a.y
+    );
+    return visible ? state : { width: state.width, height: state.height, isMaximized: state.isMaximized };
+  } catch {
+    return { width: 1280, height: 800 };
+  }
+}
+
+function saveWindowState() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  try {
+    const bounds = mainWindow.getNormalBounds();
+    fs.writeFileSync(windowStatePath(), JSON.stringify({ ...bounds, isMaximized: mainWindow.isMaximized() }));
+  } catch (err) {
+    console.error('Não foi possível salvar o tamanho da janela:', err);
+  }
+}
+
 function createWindow() {
+  const windowState = loadWindowState();
   mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 800,
+    x: windowState.x,
+    y: windowState.y,
+    width: windowState.width || 1280,
+    height: windowState.height || 800,
     minWidth: 960,
     minHeight: 600,
     backgroundColor: '#0b0e14',
@@ -206,6 +235,9 @@ function createWindow() {
       event.preventDefault();
     }
   });
+
+  if (windowState.isMaximized) mainWindow.maximize();
+  mainWindow.on('close', saveWindowState);
 
   mainWindow.on('closed', () => {
     mainWindow = null;

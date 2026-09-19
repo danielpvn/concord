@@ -53,6 +53,20 @@ const LOCAL_TYPE_FOR_INCOMING = { audio: 'audio', screen: 'screen-view', 'screen
 
 const peerKey = (type, socketId) => `${type}|${socketId}`;
 
+const loadJson = (key) => {
+  try {
+    return JSON.parse(localStorage.getItem(key) || '{}');
+  } catch {
+    return {};
+  }
+};
+
+const saveJson = (key, value) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (e) {}
+};
+
 export const VoiceProvider = ({ children }) => {
   const { user } = useAuth();
   const { socket, activeChannelId, activeChannel, onlineUsers } = useSocket();
@@ -85,14 +99,17 @@ export const VoiceProvider = ({ children }) => {
   const [remoteScreenStreams, setRemoteScreenStreams] = useState({}); // socketId -> MediaStream
   const [peerStates, setPeerStates] = useState({}); // socketId -> connectionState (áudio)
 
-  // Volumes individuais por usuário (0 a 200%)
-  const [userVolumes, setUserVolumes] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem('concord_user_volumes') || '{}');
-    } catch {
-      return {};
-    }
-  });
+  // Volumes individuais por usuário (0 a 200%) e mutes locais (só para mim), por userId
+  const [userVolumes, setUserVolumes] = useState(() => loadJson('concord_user_volumes'));
+  const [mutedUsers, setMutedUsers] = useState(() => loadJson('concord_muted_users'));
+  const [screenVolumes, setScreenVolumes] = useState(() => loadJson('concord_screen_volumes'));
+  const [mutedScreens, setMutedScreens] = useState(() => loadJson('concord_muted_screens'));
+
+  // Transmissões que estou assistindo (socketId do amigo -> true). Só recebe vídeo quem pede.
+  const [watchingScreens, setWatchingScreens] = useState({});
+  const watchingScreensRef = useRef({});
+  const declinedScreensRef = useRef({}); // parei de assistir: não reabrir automaticamente
+  const [autoWatchScreens, setAutoWatchScreens] = useState(() => localStorage.getItem('concord_auto_watch') === '1');
 
   const localStreamRef = useRef(null); // stream enviado aos amigos (processado ou direto)
   const rawMicStreamRef = useRef(null); // stream original do microfone
@@ -154,9 +171,50 @@ export const VoiceProvider = ({ children }) => {
   const setUserVolume = (userId, volume) => {
     setUserVolumes(prev => {
       const updated = { ...prev, [userId]: volume };
-      localStorage.setItem('concord_user_volumes', JSON.stringify(updated));
+      saveJson('concord_user_volumes', updated);
       return updated;
     });
+  };
+
+  const toggleUserMute = (userId) => {
+    setMutedUsers(prev => {
+      const updated = { ...prev };
+      if (updated[userId]) delete updated[userId];
+      else updated[userId] = true;
+      saveJson('concord_muted_users', updated);
+      return updated;
+    });
+  };
+
+  const setScreenVolume = (userId, volume) => {
+    setScreenVolumes(prev => {
+      const updated = { ...prev, [userId]: volume };
+      saveJson('concord_screen_volumes', updated);
+      return updated;
+    });
+  };
+
+  const toggleScreenMute = (userId) => {
+    setMutedScreens(prev => {
+      const updated = { ...prev };
+      if (updated[userId]) delete updated[userId];
+      else updated[userId] = true;
+      saveJson('concord_muted_screens', updated);
+      return updated;
+    });
+  };
+
+  const updateWatching = (socketId, watching) => {
+    const next = { ...watchingScreensRef.current };
+    if (watching) next[socketId] = true;
+    else delete next[socketId];
+    watchingScreensRef.current = next;
+    setWatchingScreens(next);
+  };
+
+  const updateAutoWatchScreens = (enabled) => {
+    setAutoWatchScreens(enabled);
+    localStorage.setItem('concord_auto_watch', enabled ? '1' : '0');
   };
 
   // ---------------------------------------------------------------------------
@@ -338,6 +396,7 @@ export const VoiceProvider = ({ children }) => {
       // Só aceitamos novas conexões a partir de uma oferta
       if (signal.description?.type !== 'offer') return;
       if (type === 'screen') return; // não estou mais transmitindo
+      if (type === 'screen-view' && !watchingScreensRef.current[fromSocketId]) return; // não pedi para assistir
       if (!inVoiceRef.current) return;
       peer = createPeer(fromSocketId, type);
     }
@@ -715,8 +774,7 @@ export const VoiceProvider = ({ children }) => {
 
       socketRef.current?.emit('update_screen_state', { isScreenSharing: true });
 
-      // Transmite para todos os amigos presentes no canal de voz
-      roomPeersRef.current.forEach(socketId => connectScreenPeer(socketId));
+      // O vídeo só é enviado para quem clicar em "Assistir" (evento screen_watch_request)
     } catch (err) {
       console.warn('Compartilhamento de tela cancelado ou indisponível:', err);
       const userAgent = navigator.userAgent;
@@ -761,18 +819,30 @@ export const VoiceProvider = ({ children }) => {
       console.log(`👤 Amigo entrou na sala de voz: ${socketId}`);
       playSound('join');
       connectAudioPeer(socketId);
-      if (screenStreamRef.current) connectScreenPeer(socketId);
     };
 
     const onUserLeft = ({ socketId }) => {
       console.log(`🚪 Amigo saiu da sala de voz: ${socketId}`);
       if (inVoiceRef.current) playSound('leave');
       ['audio', 'screen', 'screen-view'].forEach(type => closePeer(type, socketId));
+      updateWatching(socketId, false);
+      delete declinedScreensRef.current[socketId];
     };
 
     const onScreenStateChanged = ({ socketId, isScreenSharing: sharing }) => {
       if (inVoiceRef.current) playSound(sharing ? 'screenStart' : 'screenStop');
-      if (!sharing) closePeer('screen-view', socketId);
+      if (!sharing) {
+        closePeer('screen-view', socketId);
+        updateWatching(socketId, false);
+        delete declinedScreensRef.current[socketId];
+      }
+    };
+
+    // Um amigo pediu para assistir (ou parou de assistir) a minha transmissão
+    const onScreenWatchRequest = ({ viewerSocketId, watch }) => {
+      if (!viewerSocketId) return;
+      if (watch && screenStreamRef.current) connectScreenPeer(viewerSocketId);
+      else closePeer('screen', viewerSocketId);
     };
 
     // Ao perder a conexão com o servidor, o socket.id muda: descarta conexões antigas
@@ -783,6 +853,7 @@ export const VoiceProvider = ({ children }) => {
     socket.on('user_left_voice', onUserLeft);
     socket.on('user_screen_state_changed', onScreenStateChanged);
     socket.on('disconnect', onDisconnect);
+    socket.on('screen_watch_request', onScreenWatchRequest);
 
     return () => {
       socket.off('webrtc_signal', handleWebRTCSignal);
@@ -790,6 +861,7 @@ export const VoiceProvider = ({ children }) => {
       socket.off('user_left_voice', onUserLeft);
       socket.off('user_screen_state_changed', onScreenStateChanged);
       socket.off('disconnect', onDisconnect);
+      socket.off('screen_watch_request', onScreenWatchRequest);
     };
   }, [socket, handleWebRTCSignal, connectAudioPeer, connectScreenPeer, closePeer, closeAllPeers]);
 
@@ -805,6 +877,9 @@ export const VoiceProvider = ({ children }) => {
       closeAllPeers();
       stopMicrophone();
       setIsSpeaking(false);
+      watchingScreensRef.current = {};
+      declinedScreensRef.current = {};
+      setWatchingScreens({});
     };
   }, [inVoice, activeChannelId, initMicrophone, stopScreenShare, closeAllPeers]);
 
@@ -824,6 +899,31 @@ export const VoiceProvider = ({ children }) => {
       window.removeEventListener('touchstart', resumeAudio);
     };
   }, []);
+
+  const watchScreen = useCallback((socketId) => {
+    if (!socketId || watchingScreensRef.current[socketId]) return;
+    delete declinedScreensRef.current[socketId];
+    updateWatching(socketId, true);
+    socketRef.current?.emit('screen_watch', { sharerSocketId: socketId, watch: true });
+  }, []);
+
+  const stopWatchingScreen = useCallback((socketId) => {
+    declinedScreensRef.current[socketId] = true;
+    updateWatching(socketId, false);
+    closePeer('screen-view', socketId);
+    socketRef.current?.emit('screen_watch', { sharerSocketId: socketId, watch: false });
+  }, [closePeer]);
+
+  useEffect(() => {
+    if (!autoWatchScreens || !inVoice) return;
+    onlineUsers
+      .filter(u => u.channelId === activeChannelId && u.socketId !== socket?.id && u.isScreenSharing)
+      .forEach(u => {
+        if (!watchingScreensRef.current[u.socketId] && !declinedScreensRef.current[u.socketId]) {
+          watchScreen(u.socketId);
+        }
+      });
+  }, [autoWatchScreens, inVoice, onlineUsers, activeChannelId, socket?.id, watchScreen]);
 
   const toggleMute = () => {
     playSound(isMuted ? 'unmute' : 'mute');
@@ -859,6 +959,17 @@ export const VoiceProvider = ({ children }) => {
         updateSensitivity,
         userVolumes,
         setUserVolume,
+        mutedUsers,
+        toggleUserMute,
+        screenVolumes,
+        setScreenVolume,
+        mutedScreens,
+        toggleScreenMute,
+        watchingScreens,
+        watchScreen,
+        stopWatchingScreen,
+        autoWatchScreens,
+        updateAutoWatchScreens,
         isScreenSharing,
         screenStream,
         remoteStreams,

@@ -14,7 +14,17 @@ export const SocketProvider = ({ children }) => {
   const [activeChannelId, setActiveChannelId] = useState(null);
   const [messages, setMessages] = useState({});
   const [unreadChatCount, setUnreadChatCount] = useState(0);
-  const [isChatOpen, setIsChatOpen] = useState(false);
+  // Chat aberto por padrão no computador (no celular cobriria a tela inteira); lembra a escolha
+  const [isChatOpen, setIsChatOpenState] = useState(() => {
+    if (typeof window === 'undefined' || window.innerWidth < 768) return false;
+    return localStorage.getItem('concord_chat_open') !== '0';
+  });
+  const setIsChatOpen = useCallback((open) => {
+    setIsChatOpenState(open);
+    if (window.innerWidth >= 768) {
+      localStorage.setItem('concord_chat_open', open ? '1' : '0');
+    }
+  }, []);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Carrega canais do servidor

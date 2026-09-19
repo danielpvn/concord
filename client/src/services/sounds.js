@@ -2,6 +2,7 @@
 
 const STORAGE_KEY = 'concord_sounds_enabled';
 const VOLUME_KEY = 'concord_sounds_volume';
+const MESSAGE_KEY = 'concord_message_sounds_enabled';
 
 let ctx = null;
 let outputDeviceId = '';
@@ -30,6 +31,13 @@ export const setSoundsOutputDevice = (deviceId) => {
 
 export const areSoundsEnabled = () => localStorage.getItem(STORAGE_KEY) !== '0';
 export const setSoundsEnabled = (enabled) => localStorage.setItem(STORAGE_KEY, enabled ? '1' : '0');
+// Som de mensagens pode ser silenciado separadamente dos sons de entrar/sair/tela
+export const areMessageSoundsEnabled = () => localStorage.getItem(MESSAGE_KEY) !== '0';
+export const setMessageSoundsEnabled = (enabled) => {
+  localStorage.setItem(MESSAGE_KEY, enabled ? '1' : '0');
+  window.dispatchEvent(new Event('concord-sound-settings'));
+};
+
 export const getSoundsVolume = () => {
   const value = parseInt(localStorage.getItem(VOLUME_KEY) || '60', 10);
   return Number.isFinite(value) ? value : 60;
@@ -51,6 +59,7 @@ let lastPlayed = {};
 
 export const playSound = (name) => {
   if (!areSoundsEnabled()) return;
+  if (name === 'message' && !areMessageSoundsEnabled()) return;
   const sound = SOUNDS[name];
   if (!sound) return;
 

@@ -16,7 +16,9 @@ import {
   UserX,
   Menu,
   AlertTriangle,
-  LayoutGrid
+  LayoutGrid,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 
 const MENU_WIDTH = 220;
@@ -68,17 +70,45 @@ const MobileHeader = ({ onOpenMenu, label, count }) => (
   </div>
 );
 
-// Uma transmissão de tela (minha ou de um amigo)
-const ScreenTile = ({ screen, muted, compact = false, onSelect, onShowAll, className = '' }) => {
-  const videoRef = useRef(null);
-  const { outputDeviceId, screenQuality, changeScreenQuality } = useVoice();
+// Volume (0 a 200%) + mutar, só para mim
+const VolumeControl = ({ volume, muted, onVolume, onToggleMute, label }) => (
+  <div className="flex items-center gap-2 min-w-0 w-full" onClick={(e) => e.stopPropagation()}>
+    <button
+      onClick={onToggleMute}
+      title={muted ? `Desmutar ${label}` : `Mutar ${label}`}
+      aria-label={muted ? `Desmutar ${label}` : `Mutar ${label}`}
+      className={`p-1 rounded-md flex-shrink-0 transition ${muted ? 'text-red-400 bg-red-500/15' : 'text-slate-300 hover:text-white hover:bg-white/10'}`}
+    >
+      {muted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+    </button>
+    <input
+      type="range"
+      min="0"
+      max="200"
+      step="5"
+      value={volume}
+      disabled={muted}
+      onChange={(e) => onVolume(parseInt(e.target.value, 10))}
+      aria-label={`Volume de ${label}`}
+      className="w-full min-w-0 h-1.5 bg-gaming-700 rounded-lg appearance-none cursor-pointer accent-indigo-500 disabled:opacity-40"
+    />
+    <span className="text-[10px] font-mono text-slate-300 w-9 text-right flex-shrink-0">{muted ? 'Mudo' : `${volume}%`}</span>
+  </div>
+);
 
-  useEffect(() => {
-    const video = videoRef.current;
-    if (video && typeof video.setSinkId === 'function') {
-      video.setSinkId(outputDeviceId || '').catch(() => {});
-    }
-  }, [outputDeviceId]);
+// Uma transmissão de tela (minha ou de um amigo)
+const ScreenTile = ({ screen, compact = false, onSelect, onShowAll, className = '' }) => {
+  const videoRef = useRef(null);
+  const {
+    screenQuality,
+    changeScreenQuality,
+    screenVolumes,
+    setScreenVolume,
+    mutedScreens,
+    toggleScreenMute,
+    stopWatchingScreen
+  } = useVoice();
+  const hasAudio = screen.stream.getAudioTracks().length > 0;
 
   useEffect(() => {
     const video = videoRef.current;
@@ -89,8 +119,8 @@ const ScreenTile = ({ screen, muted, compact = false, onSelect, onShowAll, class
 
   // O atributo `muted` do React não é atualizado de forma confiável; aplica direto no elemento
   useEffect(() => {
-    if (videoRef.current) videoRef.current.muted = muted;
-  }, [muted]);
+    if (videoRef.current) videoRef.current.muted = true;
+  }, [screen.stream]);
 
   const enterFullscreen = (e) => {
     e.stopPropagation();
@@ -113,7 +143,7 @@ const ScreenTile = ({ screen, muted, compact = false, onSelect, onShowAll, class
         onSelect ? 'cursor-pointer hover:border-indigo-500/60 transition' : ''
       } ${className}`}
     >
-      <video ref={videoRef} autoPlay playsInline muted={muted} className="w-full h-full object-contain" />
+      <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-contain" />
 
       <div
         className={`absolute max-w-[75%] rounded-lg bg-black/60 backdrop-blur-md border border-white/10 flex items-center gap-1.5 ${
@@ -138,6 +168,38 @@ const ScreenTile = ({ screen, muted, compact = false, onSelect, onShowAll, class
             <option key={key} value={key} className="bg-gaming-900">{preset.label}</option>
           ))}
         </select>
+      )}
+
+      {/* Parar de assistir a transmissão de um amigo */}
+      {!screen.isLocal && !compact && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            stopWatchingScreen(screen.id);
+          }}
+          title="Parar de assistir"
+          aria-label={`Parar de assistir ${screen.username}`}
+          className="absolute top-2 right-2 sm:top-3 sm:right-3 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-black/60 hover:bg-black/80 backdrop-blur-md border border-white/10 text-xs text-white transition"
+        >
+          <EyeOff className="w-3.5 h-3.5" />
+          <span className="hidden sm:inline">Parar de assistir</span>
+        </button>
+      )}
+
+      {/* Volume do som da transmissão (só para mim) */}
+      {!screen.isLocal && !compact && hasAudio && (
+        <div
+          className="absolute bottom-2 left-2 sm:bottom-3 sm:left-3 w-44 sm:w-56 max-w-[55%] px-2 py-1.5 rounded-xl bg-black/60 backdrop-blur-md border border-white/10"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <VolumeControl
+            label={`som da tela de ${screen.username}`}
+            volume={screenVolumes[screen.userId] ?? 100}
+            muted={Boolean(mutedScreens[screen.userId])}
+            onVolume={(v) => setScreenVolume(screen.userId, v)}
+            onToggleMute={() => toggleScreenMute(screen.userId)}
+          />
+        </div>
       )}
 
       {!compact && (
@@ -182,10 +244,15 @@ export const VoiceGrid = () => {
     peerStates,
     micError,
     userVolumes,
-    setUserVolume
+    setUserVolume,
+    mutedUsers,
+    toggleUserMute,
+    watchingScreens,
+    watchScreen
   } = useVoice();
 
   const [contextMenu, setContextMenu] = useState(null);
+  const [volumePopover, setVolumePopover] = useState(null); // { user, x, y }
   const [focusedScreenId, setFocusedScreenId] = useState(null);
 
   // Filtra amigos conectados na mesma sala de voz ativa (e garante presença do usuário local)
@@ -218,19 +285,44 @@ export const VoiceGrid = () => {
   const screens = React.useMemo(() => {
     const list = [];
     if (isScreenSharing && screenStream) {
-      list.push({ id: 'local', username: user?.username, stream: screenStream, isLocal: true });
+      list.push({ id: 'local', userId: user?.id, username: user?.username, stream: screenStream, isLocal: true });
     }
     Object.entries(remoteScreenStreams).forEach(([socketId, stream]) => {
       const owner = roomUsers.find(u => u.socketId === socketId);
       if (owner && stream.getVideoTracks().length > 0) {
-        list.push({ id: socketId, username: owner.username, stream, isLocal: false });
+        list.push({ id: socketId, userId: owner.userId, username: owner.username, stream, isLocal: false });
       }
     });
     return list;
   }, [isScreenSharing, screenStream, remoteScreenStreams, roomUsers, user?.username]);
 
-  const pendingScreenUsers = roomUsers.filter(
-    u => u.userId !== user?.id && u.isScreenSharing && !screens.some(s => s.id === u.socketId)
+  // Amigos transmitindo que eu ainda não estou assistindo, e os que estão carregando
+  const liveUsers = roomUsers.filter(u => u.userId !== user?.id && u.isScreenSharing && !screens.some(s => s.id === u.socketId));
+  const invitableScreenUsers = liveUsers.filter(u => !watchingScreens[u.socketId]);
+  const loadingScreenUsers = liveUsers.filter(u => watchingScreens[u.socketId]);
+
+  const renderStreamNotices = (extraClass = '') => (
+    <>
+      {invitableScreenUsers.map(u => (
+        <div key={`invite-${u.socketId}`} className={`flex-shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl bg-gaming-900 border border-red-500/30 text-xs text-slate-200 ${extraClass}`}>
+          <Radio className="w-4 h-4 text-red-400 animate-pulse flex-shrink-0" />
+          <span className="truncate flex-1 min-w-0"><strong>{u.username}</strong> está transmitindo a tela</span>
+          <button
+            onClick={() => watchScreen(u.socketId)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gaming-accent hover:bg-indigo-600 text-white font-semibold transition flex-shrink-0"
+          >
+            <Eye className="w-3.5 h-3.5" />
+            Assistir
+          </button>
+        </div>
+      ))}
+      {loadingScreenUsers.map(u => (
+        <div key={`loading-${u.socketId}`} className={`flex-shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl bg-gaming-900 border border-gaming-800 text-xs text-slate-300 ${extraClass}`}>
+          <Radio className="w-4 h-4 text-red-400 animate-pulse flex-shrink-0" />
+          <span className="truncate">Carregando a tela de {u.username}…</span>
+        </div>
+      ))}
+    </>
   );
 
   // Se a tela em destaque parar, volta para a grade
@@ -240,7 +332,10 @@ export const VoiceGrid = () => {
   }, [focusedScreenId, focusedScreen]);
 
   useEffect(() => {
-    const close = () => setContextMenu(null);
+    const close = () => {
+      setContextMenu(null);
+      setVolumePopover(null);
+    };
     window.addEventListener('click', close);
     window.addEventListener('resize', close);
     return () => {
@@ -315,21 +410,37 @@ export const VoiceGrid = () => {
     const isUserSpeaking = isCurrentUser ? isSpeaking : u.isSpeaking;
     const isUserMuted = isCurrentUser ? isMuted || user?.isServerMuted : u.isMuted || u.isServerMuted;
 
+    const openVolume = (e) => {
+      if (isCurrentUser) return;
+      e.stopPropagation();
+      const rect = e.currentTarget.getBoundingClientRect();
+      const width = 240;
+      setVolumePopover({
+        user: u,
+        x: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)),
+        y: Math.max(8, rect.top - 92)
+      });
+    };
+
     return (
-      <div
+      <button
+        type="button"
         key={u.socketId || u.userId}
-        className={`flex-shrink-0 flex items-center gap-2 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl bg-gaming-900 border transition ${
+        onClick={openVolume}
+        title={isCurrentUser ? undefined : `Volume de ${u.username}`}
+        className={`flex-shrink-0 flex items-center gap-2 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl bg-gaming-900 border transition text-left ${
           isUserSpeaking ? 'border-emerald-400 ring-2 ring-emerald-500/40' : 'border-gaming-800'
-        }`}
+        } ${isCurrentUser ? 'cursor-default' : 'hover:border-gaming-600'}`}
       >
         <Avatar username={u.username} avatarColor={u.avatarColor} avatarUrl={u.avatarUrl} size="sm" isSpeaking={isUserSpeaking} />
         <div className="flex flex-col min-w-0">
           <span className="text-xs font-medium text-slate-200 truncate max-w-[80px]">{u.username}</span>
           <span className="text-[10px] text-slate-500">
-            {isUserMuted ? 'Mutado' : isUserSpeaking ? 'Falando' : 'Ouvindo'}
+            {mutedUsers[u.userId] && !isCurrentUser ? 'Mudo para você' : isUserMuted ? 'Mutado' : isUserSpeaking ? 'Falando' : 'Ouvindo'}
           </span>
         </div>
-      </div>
+        {u.isScreenSharing && <Radio className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />}
+      </button>
     );
   };
 
@@ -411,21 +522,27 @@ export const VoiceGrid = () => {
           <span className={`mt-1 text-[10px] font-medium ${connection.className}`}>{connection.text}</span>
         )}
 
-        {/* Volume individual: sempre visível no toque, aparece no hover no desktop */}
+        {/* Transmitindo a tela: selo AO VIVO e botão para assistir */}
+        {u.isScreenSharing && !isCurrentUser && !watchingScreens[u.socketId] && (
+          <button
+            onClick={() => watchScreen(u.socketId)}
+            className="mt-2 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-red-500/15 border border-red-500/30 text-red-300 hover:bg-red-500/25 text-[11px] font-bold transition"
+          >
+            <Radio className="w-3.5 h-3.5 animate-pulse" />
+            AO VIVO · Assistir
+          </button>
+        )}
+
+        {/* Volume individual (só para mim): sempre visível no toque, aparece no hover no desktop */}
         {!isCurrentUser && (
-          <div className="w-full mt-2.5 pt-2.5 border-t border-gaming-800/80 flex items-center gap-2 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity">
-            <Volume2 className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-            <input
-              type="range"
-              min="0"
-              max="100"
-              step="5"
-              value={Math.min(100, currentVolume)}
-              onChange={(e) => setUserVolume(u.userId, parseInt(e.target.value, 10))}
-              aria-label={`Volume de ${u.username}`}
-              className="w-full min-w-0 h-1.5 bg-gaming-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+          <div className={`w-full mt-2.5 pt-2.5 border-t border-gaming-800/80 transition-opacity ${mutedUsers[u.userId] ? '' : 'md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100'}`}>
+            <VolumeControl
+              label={u.username}
+              volume={currentVolume}
+              muted={Boolean(mutedUsers[u.userId])}
+              onVolume={(v) => setUserVolume(u.userId, v)}
+              onToggleMute={() => toggleUserMute(u.userId)}
             />
-            <span className="text-[10px] font-mono text-slate-400 w-8 text-right flex-shrink-0">{Math.min(100, currentVolume)}%</span>
           </div>
         )}
       </div>
@@ -449,7 +566,6 @@ export const VoiceGrid = () => {
             <>
               <ScreenTile
                 screen={focusedScreen || screens[0]}
-                muted={(focusedScreen || screens[0]).isLocal || isDeafened}
                 onShowAll={screens.length > 1 ? () => setFocusedScreenId(null) : null}
                 className="flex-1 min-h-0"
               />
@@ -461,7 +577,6 @@ export const VoiceGrid = () => {
                       <ScreenTile
                         key={s.id}
                         screen={s}
-                        muted
                         compact
                         onSelect={() => setFocusedScreenId(s.id)}
                         className="w-40 sm:w-56 aspect-video flex-shrink-0"
@@ -477,19 +592,13 @@ export const VoiceGrid = () => {
                 <ScreenTile
                   key={s.id}
                   screen={s}
-                  muted={s.isLocal || isDeafened}
                   onSelect={() => setFocusedScreenId(s.id)}
                 />
               ))}
             </div>
           )}
 
-          {pendingScreenUsers.map(u => (
-            <div key={u.socketId} className="flex-shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gaming-900 border border-gaming-800 text-xs text-slate-300">
-              <Radio className="w-4 h-4 text-red-400 animate-pulse flex-shrink-0" />
-              <span className="truncate">Carregando a tela de {u.username}…</span>
-            </div>
-          ))}
+          {renderStreamNotices()}
 
           <div className="flex-shrink-0 flex items-center gap-2 sm:gap-3 overflow-x-auto no-scrollbar py-1">
             {roomUsers.map(renderParticipantChip)}
@@ -497,12 +606,7 @@ export const VoiceGrid = () => {
         </div>
       ) : (
         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
-          {pendingScreenUsers.map(u => (
-            <div key={u.socketId} className="mb-3 flex items-center gap-2 px-3 py-2 rounded-xl bg-gaming-900 border border-gaming-800 text-xs text-slate-300">
-              <Radio className="w-4 h-4 text-red-400 animate-pulse flex-shrink-0" />
-              <span className="truncate">Carregando a tela de {u.username}…</span>
-            </div>
-          ))}
+          {renderStreamNotices('mb-2')}
 
           {roomUsers.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center text-slate-500 p-4">
@@ -516,6 +620,25 @@ export const VoiceGrid = () => {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {volumePopover && (
+        <div
+          className="fixed z-50 w-60 bg-gaming-900 border border-gaming-700 rounded-xl shadow-2xl p-3 animate-fade-in"
+          style={{ top: volumePopover.y, left: volumePopover.x }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mb-2 truncate">
+            Voz de {volumePopover.user.username}
+          </div>
+          <VolumeControl
+            label={volumePopover.user.username}
+            volume={userVolumes[volumePopover.user.userId] ?? 100}
+            muted={Boolean(mutedUsers[volumePopover.user.userId])}
+            onVolume={(v) => setUserVolume(volumePopover.user.userId, v)}
+            onToggleMute={() => toggleUserMute(volumePopover.user.userId)}
+          />
         </div>
       )}
 

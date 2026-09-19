@@ -1,6 +1,6 @@
 {
   "name": "concord-desktop",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Concord - Hub Privado Gamer para Amigos",
   "main": "main.js",
   "type": "module",

@@ -7,8 +7,9 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "prisma:generate": "prisma generate",
-    "prisma:push": "prisma db push"
+    "prisma:generate": "node scripts/prepare-prisma.js && prisma generate",
+    "prisma:push": "node scripts/prepare-prisma.js && prisma db push --skip-generate",
+    "prisma:prepare": "node scripts/prepare-prisma.js"
   },
   "dependencies": {
     "@prisma/client": "^6.4.0",

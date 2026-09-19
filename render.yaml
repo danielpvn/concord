@@ -9,7 +9,8 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 20.x
+      # Postgres persistente (ex.: Neon). Com file:./dev.db os dados somem a cada deploy.
       - key: DATABASE_URL
-        value: file:./dev.db
+        sync: false
       - key: JWT_SECRET
         generateValue: true

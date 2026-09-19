@@ -2,6 +2,8 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// O provider é trocado automaticamente para "postgresql" no build quando DATABASE_URL
+// aponta para um Postgres (ver scripts/prepare-prisma.js)
 datasource db {
   provider = "sqlite"
   url      = env("DATABASE_URL")
@@ -40,4 +42,14 @@ model Message {
   channelId      String
   channel        Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
   createdAt      DateTime @default(now())
+}
+
+// Avatares e anexos do chat (guardados no banco para não sumirem com o disco efêmero do Render)
+model Upload {
+  id        String   @id @default(uuid())
+  filename  String
+  mimeType  String
+  size      Int
+  data      Bytes
+  createdAt DateTime @default(now())
 }

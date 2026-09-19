@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState, useRef, useCallb
 import { useAuth } from './AuthContext';
 import { useSocket } from './SocketContext';
 import { apiFetch } from '../services/api';
+import { createMicProcessor } from '../services/micProcessor';
 
 const VoiceContext = createContext(null);
 
@@ -29,6 +30,10 @@ export const VoiceProvider = ({ children }) => {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [micLevel, setMicLevel] = useState(0); // 0 a 100 para barra de teste
   const [micError, setMicError] = useState(null);
+  // Supressão de ruído por IA (RNNoise) e noise gate pela linha de sensibilidade
+  const [aiNoiseSuppression, setAiNoiseSuppression] = useState(() => localStorage.getItem('concord_ai_noise_suppression') !== '0');
+  const [aiNoiseActive, setAiNoiseActive] = useState(false);
+  const [voiceGate, setVoiceGate] = useState(() => localStorage.getItem('concord_voice_gate') === '1');
   const [sensitivityThreshold, setSensitivityThreshold] = useState(() => {
     return parseInt(localStorage.getItem('concord_voice_sensitivity') || '25', 10);
   });
@@ -48,7 +53,12 @@ export const VoiceProvider = ({ children }) => {
     }
   });
 
-  const localStreamRef = useRef(null);
+  const localStreamRef = useRef(null); // stream enviado aos amigos (processado ou direto)
+  const rawMicStreamRef = useRef(null); // stream original do microfone
+  const processorRef = useRef(null);
+  const processorBuildRef = useRef(0);
+  const aiNoiseSuppressionRef = useRef(aiNoiseSuppression);
+  const voiceGateRef = useRef(voiceGate);
   const micPromiseRef = useRef(null);
   const screenStreamRef = useRef(null);
   const audioContextRef = useRef(null);
@@ -314,8 +324,35 @@ export const VoiceProvider = ({ children }) => {
   }, [closePeer]);
 
   // ---------------------------------------------------------------------------
-  // Microfone e detector de voz
+  // Microfone: RNNoise (IA) + noise gate + detector de voz
   // ---------------------------------------------------------------------------
+
+  const applyMuteState = () => {
+    const enabled = !(isMutedRef.current || isServerMutedRef.current);
+    rawMicStreamRef.current?.getAudioTracks().forEach(t => { t.enabled = enabled; });
+    localStreamRef.current?.getAudioTracks().forEach(t => { t.enabled = enabled; });
+  };
+
+  // Escolhe a faixa enviada aos amigos: a processada (sem ruído) quando o Web Audio está rodando,
+  // senão a do microfone direto (ex.: iOS antes do primeiro toque na tela)
+  const refreshOutgoingAudio = () => {
+    const raw = rawMicStreamRef.current;
+    if (!raw) {
+      localStreamRef.current = null;
+      return;
+    }
+    const processor = processorRef.current;
+    const next = processor && processor.ctx.state === 'running' ? processor.stream : raw;
+    const changed = localStreamRef.current !== next;
+    localStreamRef.current = next;
+    applyMuteState();
+    setAiNoiseActive(Boolean(processor?.aiActive && next === processor.stream));
+    if (changed) {
+      peersRef.current.forEach(peer => {
+        if (peer.type === 'audio') attachLocalAudio(peer).catch(console.warn);
+      });
+    }
+  };
 
   const stopVoiceActivity = () => {
     if (vadIntervalRef.current) {
@@ -324,25 +361,8 @@ export const VoiceProvider = ({ children }) => {
     }
   };
 
-  const startVoiceActivity = (stream) => {
+  const startVoiceActivity = (analyser) => {
     stopVoiceActivity();
-    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContextClass) return;
-
-    if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
-      audioContextRef.current = new AudioContextClass();
-    }
-    const audioCtx = audioContextRef.current;
-    if (audioCtx.state === 'suspended') {
-      audioCtx.resume().catch(() => {});
-    }
-
-    const source = audioCtx.createMediaStreamSource(stream);
-    const analyser = audioCtx.createAnalyser();
-    analyser.fftSize = 256;
-    analyser.smoothingTimeConstant = 0.2;
-    source.connect(analyser);
-
     const dataArray = new Uint8Array(analyser.frequencyBinCount);
     let lastLevel = -1;
     let speaking = false;
@@ -363,19 +383,58 @@ export const VoiceProvider = ({ children }) => {
       const effectivelyMuted = isMutedRef.current || isServerMutedRef.current;
       const now = Date.now();
       if (!effectivelyMuted && levelPercent > sensitivityThresholdRef.current) lastLoudAt = now;
-      // Segura o indicador por 300ms para não piscar entre sílabas
-      const speakingNow = !effectivelyMuted && now - lastLoudAt < 300;
+      // Segura por 350ms para não cortar entre sílabas
+      const speakingNow = !effectivelyMuted && now - lastLoudAt < 350;
+
+      // Noise gate: só transmite quando a voz passa da linha de sensibilidade
+      processorRef.current?.setGateOpen(!voiceGateRef.current || speakingNow);
 
       if (speakingNow !== speaking) {
         speaking = speakingNow;
         setIsSpeaking(speakingNow);
         socketRef.current?.emit('update_voice_state', { isSpeaking: speakingNow });
       }
-    }, 80);
+    }, 40);
+  };
+
+  const buildProcessor = async () => {
+    const raw = rawMicStreamRef.current;
+    if (!raw) return;
+    const buildId = ++processorBuildRef.current;
+
+    let processor = null;
+    try {
+      processor = await createMicProcessor(raw, { aiNoiseSuppression: aiNoiseSuppressionRef.current });
+    } catch (err) {
+      console.warn('[Áudio] Falha ao montar processamento do microfone:', err);
+    }
+
+    // Outra montagem começou ou o microfone foi desligado nesse meio tempo
+    if (buildId !== processorBuildRef.current || rawMicStreamRef.current !== raw) {
+      processor?.destroy();
+      return;
+    }
+
+    const previous = processorRef.current;
+    processorRef.current = processor;
+
+    if (processor) {
+      audioContextRef.current = processor.ctx;
+      processor.ctx.onstatechange = () => {
+        if (processorRef.current === processor) refreshOutgoingAudio();
+      };
+      if (processor.ctx.state !== 'running') processor.ctx.resume().catch(() => {});
+      startVoiceActivity(processor.analyser);
+    } else {
+      stopVoiceActivity();
+    }
+
+    refreshOutgoingAudio();
+    previous?.destroy();
   };
 
   const initMicrophone = useCallback(async () => {
-    if (localStreamRef.current && localStreamRef.current.active) {
+    if (rawMicStreamRef.current && rawMicStreamRef.current.active) {
       return localStreamRef.current;
     }
     if (micPromiseRef.current) return micPromiseRef.current;
@@ -407,19 +466,13 @@ export const VoiceProvider = ({ children }) => {
           return null;
         }
 
-        const track = stream.getAudioTracks()[0];
-        if (track) track.enabled = !(isMutedRef.current || isServerMutedRef.current);
-
-        localStreamRef.current = stream;
+        rawMicStreamRef.current = stream;
         setMicError(null);
-        startVoiceActivity(stream);
+        // Já envia o microfone direto; troca pela versão sem ruído assim que ela estiver pronta
+        refreshOutgoingAudio();
+        await buildProcessor();
 
-        // Conexões criadas antes do microfone ficar pronto passam a enviar a voz (com renegociação)
-        peersRef.current.forEach(peer => {
-          if (peer.type === 'audio') attachLocalAudio(peer).catch(console.warn);
-        });
-
-        return stream;
+        return localStreamRef.current;
       } catch (err) {
         console.warn('Não foi possível acessar o microfone (modo ouvinte ativado):', err);
         setMicError(
@@ -438,21 +491,37 @@ export const VoiceProvider = ({ children }) => {
 
   const stopMicrophone = () => {
     stopVoiceActivity();
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(t => t.stop());
-      localStreamRef.current = null;
+    processorBuildRef.current++;
+    processorRef.current?.destroy();
+    processorRef.current = null;
+    audioContextRef.current = null;
+    if (rawMicStreamRef.current) {
+      rawMicStreamRef.current.getTracks().forEach(t => t.stop());
+      rawMicStreamRef.current = null;
     }
+    localStreamRef.current = null;
+    setAiNoiseActive(false);
     setMicLevel(0);
+  };
+
+  const updateAiNoiseSuppression = (enabled) => {
+    setAiNoiseSuppression(enabled);
+    aiNoiseSuppressionRef.current = enabled;
+    localStorage.setItem('concord_ai_noise_suppression', enabled ? '1' : '0');
+    if (rawMicStreamRef.current) buildProcessor();
+  };
+
+  const updateVoiceGate = (enabled) => {
+    setVoiceGate(enabled);
+    voiceGateRef.current = enabled;
+    localStorage.setItem('concord_voice_gate', enabled ? '1' : '0');
+    if (!enabled) processorRef.current?.setGateOpen(true);
   };
 
   // Aplica Mute / Server Mute nas faixas locais de áudio
   useEffect(() => {
     const effectivelyMuted = isMuted || user?.isServerMuted;
-    if (localStreamRef.current) {
-      localStreamRef.current.getAudioTracks().forEach(track => {
-        track.enabled = !effectivelyMuted;
-      });
-    }
+    applyMuteState();
 
     if (effectivelyMuted) setIsSpeaking(false);
 
@@ -623,6 +692,11 @@ export const VoiceProvider = ({ children }) => {
         isSpeaking,
         micLevel,
         micError,
+        aiNoiseSuppression,
+        aiNoiseActive,
+        updateAiNoiseSuppression,
+        voiceGate,
+        updateVoiceGate,
         sensitivityThreshold,
         updateSensitivity,
         userVolumes,

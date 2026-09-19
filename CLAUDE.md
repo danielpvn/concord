@@ -60,7 +60,8 @@ O **Concord** é uma plataforma privada de comunicação para gamers inspirada n
 ## ⚡ 3. Regras Arquiteturais Críticas
 
 ### 3.1. Banco de Dados e Persistência de Logins
-- O banco utilizado é **SQLite via Prisma ORM**.
+- O banco é **Prisma ORM**: em produção deve ser **Postgres** (`DATABASE_URL=postgresql://...`, ex.: Neon); localmente SQLite. O script `server/scripts/prepare-prisma.js` troca o `provider` do `schema.prisma` automaticamente conforme a URL (roda antes de `prisma:push`/`prisma:generate`). **O disco do Render é efêmero**: SQLite lá perde todas as contas a cada deploy.
+- Uploads (avatares e anexos do chat) ficam no banco (modelo `Upload`) e são servidos em `GET /api/files/:id`; não use o disco (`uploads/`).
 - **NUNCA execute `deleteMany` automático em `seedService.js`**. O `seedService.js` deve apenas garantir que os canais padrão existam e que a conta `Daniel` esteja com o cargo `OWNER`. Todas as contas criadas por outros usuários devem permanecer **salvas permanentemente**.
 - Moderação de contas: O Dono tem endpoints dedicados em `adminController.js` (`DELETE /api/admin/users/:id` e `POST /api/admin/reset-members`).
 
@@ -119,7 +120,8 @@ git push origin master
 ### Servidor (`server/.env` ou Render Environment):
 - `PORT`: `3001` (ou fornecida dinamicamente pelo Render via `$PORT`)
 - `NODE_ENV`: `production`
-- `DATABASE_URL`: `file:./dev.db`
+- `DATABASE_URL`: `postgresql://...` em produção (Neon/Supabase) ou `file:./dev.db` localmente
+- TURN (voz/tela em 4G): `CLOUDFLARE_TURN_KEY_ID` + `CLOUDFLARE_TURN_API_TOKEN`, ou `METERED_DOMAIN` + `METERED_API_KEY`, ou `TURN_URLS`/`TURN_USERNAME`/`TURN_CREDENTIAL`
 - `JWT_SECRET`: Chave secreta de autenticação
 - `CLIENT_URL`: `https://concord-l08s.onrender.com`
 

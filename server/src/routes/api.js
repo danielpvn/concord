@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { register, login, getMe, updateProfile, changePassword } from '../controllers/authController.js';
 import { getChannels, createChannel, deleteChannel, getChannelMessages } from '../controllers/channelController.js';
 import { getAllUsers, promoteToAdmin, demoteFromAdmin, toggleServerMute, resetUserPassword, deleteUser, resetAllMembers } from '../controllers/adminController.js';
-import { upload, handleFileUpload } from '../controllers/uploadController.js';
+import { upload, handleFileUpload, handleAvatarUpload, serveFile } from '../controllers/uploadController.js';
 import { generateLiveKitToken } from '../services/livekitService.js';
 import { getIceServers, hasTurnConfigured } from '../services/iceService.js';
 import { requireAuth, requireAdmin, requireOwner } from '../middleware/auth.js';
@@ -17,13 +17,10 @@ router.put('/auth/profile', requireAuth, updateProfile);
 router.post('/auth/change-password', requireAuth, changePassword);
 
 // Upload dedicado para avatar
-router.post('/auth/avatar', requireAuth, upload.single('avatar'), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: 'Nenhuma imagem enviada' });
-  }
-  const avatarUrl = `/uploads/${req.file.filename}`;
-  return res.json({ avatarUrl });
-});
+router.post('/auth/avatar', requireAuth, upload.single('avatar'), handleAvatarUpload);
+
+// Arquivos enviados (avatares e anexos do chat), guardados no banco
+router.get('/files/:id', serveFile);
 
 // --- Rota de Verificação de Versão (Auto-Update) ---
 router.get('/version', (req, res) => {

@@ -15,7 +15,8 @@ import {
   MoveRight,
   UserX,
   Menu,
-  AlertTriangle
+  AlertTriangle,
+  LayoutGrid
 } from 'lucide-react';
 
 const MENU_WIDTH = 220;
@@ -67,6 +68,83 @@ const MobileHeader = ({ onOpenMenu, label, count }) => (
   </div>
 );
 
+// Uma transmissão de tela (minha ou de um amigo)
+const ScreenTile = ({ screen, muted, compact = false, onSelect, onShowAll, className = '' }) => {
+  const videoRef = useRef(null);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (video.srcObject !== screen.stream) video.srcObject = screen.stream;
+    video.play().catch(() => {});
+  }, [screen.stream]);
+
+  // O atributo `muted` do React não é atualizado de forma confiável; aplica direto no elemento
+  useEffect(() => {
+    if (videoRef.current) videoRef.current.muted = muted;
+  }, [muted]);
+
+  const enterFullscreen = (e) => {
+    e.stopPropagation();
+    const video = videoRef.current;
+    if (!video) return;
+    if (video.requestFullscreen) {
+      video.requestFullscreen().catch(() => {});
+    } else if (video.webkitEnterFullscreen) {
+      video.webkitEnterFullscreen(); // iPhone
+    }
+  };
+
+  const label = screen.isLocal ? 'Sua Transmissão' : `Tela de ${screen.username}`;
+
+  return (
+    <div
+      onClick={onSelect}
+      title={onSelect ? `Destacar ${label}` : undefined}
+      className={`relative bg-black rounded-xl sm:rounded-2xl overflow-hidden border border-gaming-800 flex items-center justify-center shadow-2xl min-w-0 ${
+        onSelect ? 'cursor-pointer hover:border-indigo-500/60 transition' : ''
+      } ${className}`}
+    >
+      <video ref={videoRef} autoPlay playsInline muted={muted} className="w-full h-full object-contain" />
+
+      <div
+        className={`absolute max-w-[75%] rounded-lg bg-black/60 backdrop-blur-md border border-white/10 flex items-center gap-1.5 ${
+          compact ? 'top-1 left-1 px-1.5 py-0.5' : 'top-2 left-2 sm:top-3 sm:left-3 px-2.5 py-1'
+        }`}
+      >
+        <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse flex-shrink-0" />
+        <span className={`font-semibold text-white truncate ${compact ? 'text-[10px]' : 'text-xs'}`}>{label}</span>
+      </div>
+
+      {!compact && (
+        <div className="absolute bottom-2 right-2 sm:bottom-3 sm:right-3 flex items-center gap-1.5">
+          {onShowAll && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onShowAll();
+              }}
+              title="Ver todas as telas"
+              aria-label="Ver todas as telas"
+              className="p-2.5 rounded-xl bg-black/60 hover:bg-black/80 backdrop-blur-md text-white border border-white/10 transition"
+            >
+              <LayoutGrid className="w-4 h-4" />
+            </button>
+          )}
+          <button
+            onClick={enterFullscreen}
+            title="Tela Cheia"
+            aria-label="Tela Cheia"
+            className="p-2.5 rounded-xl bg-black/60 hover:bg-black/80 backdrop-blur-md text-white border border-white/10 transition"
+          >
+            <Maximize className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const VoiceGrid = () => {
   const { socket, onlineUsers, activeChannel, activeChannelId, adminServerMute, adminKickVoice, adminMoveUser, channels, setIsMobileMenuOpen } = useSocket();
   const { user, isAdmin } = useAuth();
@@ -84,7 +162,7 @@ export const VoiceGrid = () => {
   } = useVoice();
 
   const [contextMenu, setContextMenu] = useState(null);
-  const videoRef = useRef(null);
+  const [focusedScreenId, setFocusedScreenId] = useState(null);
 
   // Filtra amigos conectados na mesma sala de voz ativa (e garante presença do usuário local)
   const roomUsers = React.useMemo(() => {
@@ -112,22 +190,30 @@ export const VoiceGrid = () => {
     return inRoom;
   }, [onlineUsers, activeChannelId, user, activeChannel, socket?.id, isMuted, isDeafened, isSpeaking, isScreenSharing]);
 
-  // Transmissão ativa: a minha, ou a primeira de um amigo que já chegou
-  const remoteScreenUser = roomUsers.find(u => u.userId !== user?.id && remoteScreenStreams[u.socketId]);
-  const activeScreenStream = isScreenSharing
-    ? screenStream
-    : remoteScreenUser
-      ? remoteScreenStreams[remoteScreenUser.socketId]
-      : null;
-  const pendingScreenUser = !activeScreenStream && roomUsers.find(u => u.userId !== user?.id && u.isScreenSharing);
-
-  useEffect(() => {
-    const video = videoRef.current;
-    if (video && activeScreenStream) {
-      video.srcObject = activeScreenStream;
-      video.play().catch(() => {});
+  // Todas as transmissões de tela da sala: a minha primeiro, depois as dos amigos
+  const screens = React.useMemo(() => {
+    const list = [];
+    if (isScreenSharing && screenStream) {
+      list.push({ id: 'local', username: user?.username, stream: screenStream, isLocal: true });
     }
-  }, [activeScreenStream]);
+    Object.entries(remoteScreenStreams).forEach(([socketId, stream]) => {
+      const owner = roomUsers.find(u => u.socketId === socketId);
+      if (owner && stream.getVideoTracks().length > 0) {
+        list.push({ id: socketId, username: owner.username, stream, isLocal: false });
+      }
+    });
+    return list;
+  }, [isScreenSharing, screenStream, remoteScreenStreams, roomUsers, user?.username]);
+
+  const pendingScreenUsers = roomUsers.filter(
+    u => u.userId !== user?.id && u.isScreenSharing && !screens.some(s => s.id === u.socketId)
+  );
+
+  // Se a tela em destaque parar, volta para a grade
+  const focusedScreen = screens.find(s => s.id === focusedScreenId) || null;
+  useEffect(() => {
+    if (focusedScreenId && !focusedScreen) setFocusedScreenId(null);
+  }, [focusedScreenId, focusedScreen]);
 
   useEffect(() => {
     const close = () => setContextMenu(null);
@@ -165,16 +251,6 @@ export const VoiceGrid = () => {
   const handleDragStart = (e, userId) => {
     if (isAdmin) {
       e.dataTransfer.setData('text/plain', userId);
-    }
-  };
-
-  const enterFullscreen = () => {
-    const video = videoRef.current;
-    if (!video) return;
-    if (video.requestFullscreen) {
-      video.requestFullscreen().catch(() => {});
-    } else if (video.webkitEnterFullscreen) {
-      video.webkitEnterFullscreen(); // iPhone
     }
   };
 
@@ -343,35 +419,53 @@ export const VoiceGrid = () => {
         </div>
       )}
 
-      {activeScreenStream ? (
-        <div className="flex-1 flex flex-col gap-3 sm:gap-4 min-h-0">
-          <div className="relative flex-1 min-h-0 bg-black rounded-2xl overflow-hidden border border-gaming-800 flex items-center justify-center group shadow-2xl">
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              // A prévia da minha própria tela fica muda para não gerar eco do áudio do sistema
-              muted={isScreenSharing || isDeafened}
-              className="w-full h-full object-contain"
-            />
-
-            <div className="absolute top-2 left-2 sm:top-4 sm:left-4 max-w-[75%] px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-xl bg-black/60 backdrop-blur-md border border-white/10 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse flex-shrink-0" />
-              <span className="text-xs font-semibold text-white tracking-wide flex items-center gap-1.5 truncate">
-                <Radio className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
-                <span className="truncate">{isScreenSharing ? 'Sua Transmissão' : `Tela de ${remoteScreenUser?.username}`}</span>
-              </span>
+      {screens.length > 0 ? (
+        <div className="flex-1 flex flex-col gap-2 sm:gap-3 min-h-0">
+          {focusedScreen || screens.length === 1 ? (
+            <>
+              <ScreenTile
+                screen={focusedScreen || screens[0]}
+                muted={(focusedScreen || screens[0]).isLocal || isDeafened}
+                onShowAll={screens.length > 1 ? () => setFocusedScreenId(null) : null}
+                className="flex-1 min-h-0"
+              />
+              {screens.length > 1 && (
+                <div className="flex-shrink-0 flex gap-2 overflow-x-auto no-scrollbar">
+                  {screens
+                    .filter(s => s.id !== (focusedScreen || screens[0]).id)
+                    .map(s => (
+                      <ScreenTile
+                        key={s.id}
+                        screen={s}
+                        muted
+                        compact
+                        onSelect={() => setFocusedScreenId(s.id)}
+                        className="w-40 sm:w-56 aspect-video flex-shrink-0"
+                      />
+                    ))}
+                </div>
+              )}
+            </>
+          ) : (
+            // Várias telas ao mesmo tempo: grade (toque em uma para destacar)
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain grid grid-cols-1 md:grid-cols-2 auto-rows-[minmax(180px,1fr)] gap-2 sm:gap-3">
+              {screens.map(s => (
+                <ScreenTile
+                  key={s.id}
+                  screen={s}
+                  muted={s.isLocal || isDeafened}
+                  onSelect={() => setFocusedScreenId(s.id)}
+                />
+              ))}
             </div>
+          )}
 
-            <button
-              onClick={enterFullscreen}
-              title="Tela Cheia"
-              aria-label="Tela Cheia"
-              className="absolute bottom-2 right-2 sm:bottom-4 sm:right-4 p-2.5 rounded-xl bg-black/60 hover:bg-black/80 backdrop-blur-md text-white border border-white/10 transition"
-            >
-              <Maximize className="w-4 h-4" />
-            </button>
-          </div>
+          {pendingScreenUsers.map(u => (
+            <div key={u.socketId} className="flex-shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gaming-900 border border-gaming-800 text-xs text-slate-300">
+              <Radio className="w-4 h-4 text-red-400 animate-pulse flex-shrink-0" />
+              <span className="truncate">Carregando a tela de {u.username}…</span>
+            </div>
+          ))}
 
           <div className="flex-shrink-0 flex items-center gap-2 sm:gap-3 overflow-x-auto no-scrollbar py-1">
             {roomUsers.map(renderParticipantChip)}
@@ -379,12 +473,12 @@ export const VoiceGrid = () => {
         </div>
       ) : (
         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
-          {pendingScreenUser && (
-            <div className="mb-3 flex items-center gap-2 px-3 py-2 rounded-xl bg-gaming-900 border border-gaming-800 text-xs text-slate-300">
+          {pendingScreenUsers.map(u => (
+            <div key={u.socketId} className="mb-3 flex items-center gap-2 px-3 py-2 rounded-xl bg-gaming-900 border border-gaming-800 text-xs text-slate-300">
               <Radio className="w-4 h-4 text-red-400 animate-pulse flex-shrink-0" />
-              <span className="truncate">Carregando a tela de {pendingScreenUser.username}…</span>
+              <span className="truncate">Carregando a tela de {u.username}…</span>
             </div>
-          )}
+          ))}
 
           {roomUsers.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center text-slate-500 p-4">

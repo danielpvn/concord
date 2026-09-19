@@ -20,7 +20,8 @@ import {
   Lock,
   KeyRound,
   AlertCircle,
-  User
+  User,
+  Sparkles
 } from 'lucide-react';
 
 const AVATAR_COLORS = [
@@ -36,7 +37,17 @@ const AVATAR_COLORS = [
 
 export const SettingsModal = ({ isOpen, onClose }) => {
   const { user, updateProfile } = useAuth();
-  const { micLevel, sensitivityThreshold, updateSensitivity, isSpeaking } = useVoice();
+  const {
+    micLevel,
+    sensitivityThreshold,
+    updateSensitivity,
+    isSpeaking,
+    aiNoiseSuppression,
+    aiNoiseActive,
+    updateAiNoiseSuppression,
+    voiceGate,
+    updateVoiceGate
+  } = useVoice();
   const { broadcastProfileUpdate } = useSocket();
 
   const [selectedColor, setSelectedColor] = useState(user?.avatarColor || AVATAR_COLORS[0]);
@@ -424,14 +435,57 @@ export const SettingsModal = ({ isOpen, onClose }) => {
               </div>
             </div>
 
-            {/* Seção 2: Microfone e Sensibilidade de Voz */}
+            {/* Seção 2: Isolamento de Voz, Microfone e Sensibilidade */}
             <div>
               <h3 className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <Sparkles className="w-4 h-4 text-indigo-400" />
+                Isolamento de Voz
+              </h3>
+
+              <div className="space-y-2 mb-4">
+                <label className="flex items-start gap-3 bg-gaming-950 p-3.5 rounded-xl border border-gaming-800 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={aiNoiseSuppression}
+                    onChange={(e) => updateAiNoiseSuppression(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 accent-indigo-500 flex-shrink-0"
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-sm md:text-xs font-semibold text-white">
+                      Supressão de ruído com IA (RNNoise)
+                      {aiNoiseSuppression && aiNoiseActive && (
+                        <span className="ml-2 px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 text-[10px] font-bold align-middle">ATIVO</span>
+                      )}
+                    </span>
+                    <span className="block text-[11px] text-slate-400 mt-0.5">
+                      Remove teclado, ventilador, ar-condicionado e barulho de fundo, deixando só a sua voz.
+                    </span>
+                  </span>
+                </label>
+
+                <label className="flex items-start gap-3 bg-gaming-950 p-3.5 rounded-xl border border-gaming-800 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={voiceGate}
+                    onChange={(e) => updateVoiceGate(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 accent-indigo-500 flex-shrink-0"
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-sm md:text-xs font-semibold text-white">Transmitir só quando eu falar (Noise Gate)</span>
+                    <span className="block text-[11px] text-slate-400 mt-0.5">
+                      Corta totalmente o microfone enquanto o volume estiver abaixo da linha branca abaixo.
+                    </span>
+                  </span>
+                </label>
+              </div>
+
+              <h3 className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2 flex items-center gap-1.5">
                 <Mic className="w-4 h-4 text-emerald-400" />
-                Sensibilidade de Ativação por Voz (Noise Gate)
+                Sensibilidade de Ativação por Voz
               </h3>
               <p className="text-[11px] text-slate-400 mb-3">
-                Fale no microfone para calibrar. Quando a barra verde ultrapassar a linha branca, seu áudio será transmitido.
+                Fale no microfone para calibrar. Quando a barra verde ultrapassar a linha branca, você aparece como falando
+                {voiceGate ? ' e seu áudio é transmitido.' : '.'}
               </p>
 
               <div className="space-y-1.5 bg-gaming-950 p-3.5 rounded-xl border border-gaming-800">

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { apiFetch } from '../../services/api';
-import { Crown, Shield, UserX, X, Check, AlertCircle, KeyRound, Copy } from 'lucide-react';
+import { Crown, Shield, UserX, X, Check, AlertCircle, KeyRound, Copy, Trash2 } from 'lucide-react';
 
 export const AdminManagementModal = ({ isOpen, onClose }) => {
   const [users, setUsers] = useState([]);
@@ -44,6 +44,28 @@ export const AdminManagementModal = ({ isOpen, onClose }) => {
   const handleDemote = async (userId) => {
     try {
       const data = await apiFetch(`/admin/users/${userId}/demote`, { method: 'POST' });
+      setFeedback({ type: 'success', text: data.message });
+      loadUsers();
+    } catch (err) {
+      setFeedback({ type: 'error', text: err.message });
+    }
+  };
+
+  const handleDeleteUser = async (targetUser) => {
+    if (!window.confirm(`Deseja realmente excluir a conta de "${targetUser.username}"?`)) return;
+    try {
+      const data = await apiFetch(`/admin/users/${targetUser.id}`, { method: 'DELETE' });
+      setFeedback({ type: 'success', text: data.message });
+      loadUsers();
+    } catch (err) {
+      setFeedback({ type: 'error', text: err.message });
+    }
+  };
+
+  const handleResetAllMembers = async () => {
+    if (!window.confirm('⚠️ ATENÇÃO: Deseja realmente zerar todas as contas e mensagens de amigos no servidor? A sua conta de Dono permanecerá salva e intacta.')) return;
+    try {
+      const data = await apiFetch('/admin/reset-all-members', { method: 'POST' });
       setFeedback({ type: 'success', text: data.message });
       loadUsers();
     } catch (err) {
@@ -179,24 +201,37 @@ export const AdminManagementModal = ({ isOpen, onClose }) => {
                       <span className="hidden sm:inline">Reset Senha</span>
                     </button>
 
-                    {/* Botões de Cargo */}
+                    {/* Botões de Cargo & Exclusão */}
                     {u.role === 'OWNER' ? (
                       <span className="text-xs text-slate-500 italic px-2">Dono</span>
-                    ) : u.role === 'ADMIN' ? (
-                      <button
-                        onClick={() => handleDemote(u.id)}
-                        className="px-2.5 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-medium transition"
-                      >
-                        Remover Admin
-                      </button>
                     ) : (
-                      <button
-                        onClick={() => handlePromote(u.id)}
-                        className="px-2.5 py-1.5 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 text-xs font-medium transition flex items-center gap-1"
-                      >
-                        <Shield className="w-3.5 h-3.5" />
-                        <span>Tornar Admin</span>
-                      </button>
+                      <>
+                        {u.role === 'ADMIN' ? (
+                          <button
+                            onClick={() => handleDemote(u.id)}
+                            className="px-2.5 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-medium transition"
+                          >
+                            Remover Admin
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handlePromote(u.id)}
+                            className="px-2.5 py-1.5 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 text-xs font-medium transition flex items-center gap-1"
+                          >
+                            <Shield className="w-3.5 h-3.5" />
+                            <span>Tornar Admin</span>
+                          </button>
+                        )}
+
+                        {/* Botão de Excluir Usuário */}
+                        <button
+                          onClick={() => handleDeleteUser(u)}
+                          title={`Excluir conta de ${u.username}`}
+                          className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs transition"
+                        >
+                          <UserX className="w-3.5 h-3.5" />
+                        </button>
+                      </>
                     )}
                   </div>
                 </div>
@@ -205,7 +240,16 @@ export const AdminManagementModal = ({ isOpen, onClose }) => {
           </div>
 
           {/* Rodapé */}
-          <div className="mt-6 pt-4 border-t border-gaming-800 flex justify-end">
+          <div className="mt-6 pt-4 border-t border-gaming-800 flex items-center justify-between">
+            <button
+              onClick={handleResetAllMembers}
+              title="Apagar todas as contas de membros e mensagens do servidor"
+              className="px-3 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-medium transition flex items-center gap-1.5"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Zerar Contas de Amigos</span>
+            </button>
+
             <button
               onClick={onClose}
               className="px-4 py-2 rounded-xl bg-gaming-800 hover:bg-gaming-700 text-slate-200 text-xs font-medium transition"

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { register, login, getMe, updateProfile, changePassword } from '../controllers/authController.js';
 import { getChannels, createChannel, deleteChannel, getChannelMessages } from '../controllers/channelController.js';
-import { getAllUsers, promoteToAdmin, demoteFromAdmin, toggleServerMute, resetUserPassword } from '../controllers/adminController.js';
+import { getAllUsers, promoteToAdmin, demoteFromAdmin, toggleServerMute, resetUserPassword, deleteUser, resetAllMembers } from '../controllers/adminController.js';
 import { upload, handleFileUpload } from '../controllers/uploadController.js';
 import { generateLiveKitToken } from '../services/livekitService.js';
 import { requireAuth, requireAdmin, requireOwner } from '../middleware/auth.js';
@@ -45,6 +45,8 @@ router.post('/admin/users/:userId/promote', requireAuth, requireOwner, promoteTo
 router.post('/admin/users/:userId/demote', requireAuth, requireOwner, demoteFromAdmin);
 router.post('/admin/users/:userId/server-mute', requireAuth, requireAdmin, toggleServerMute);
 router.post('/admin/users/:userId/reset-password', requireAuth, requireAdmin, resetUserPassword);
+router.delete('/admin/users/:userId', requireAuth, requireOwner, deleteUser);
+router.post('/admin/reset-all-members', requireAuth, requireOwner, resetAllMembers);
 
 
 // --- Rota de Upload de Arquivos / Imagens para o Chat ---

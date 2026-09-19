@@ -174,3 +174,51 @@ export const resetUserPassword = async (req, res) => {
     return res.status(500).json({ error: 'Erro ao resetar senha do usuário' });
   }
 };
+
+// Apenas o OWNER pode excluir uma conta de usuário
+export const deleteUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const targetUser = await prisma.user.findUnique({
+      where: { id: userId }
+    });
+
+    if (!targetUser) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    if (targetUser.role === 'OWNER') {
+      return res.status(400).json({ error: 'Não é possível excluir o Dono do servidor' });
+    }
+
+    await prisma.message.deleteMany({ where: { userId } });
+    await prisma.user.delete({ where: { id: userId } });
+
+    return res.json({ message: `Conta de ${targetUser.username} excluída com sucesso!` });
+  } catch (err) {
+    console.error('Erro ao excluir usuário:', err);
+    return res.status(500).json({ error: 'Erro ao excluir usuário' });
+  }
+};
+
+// Apenas o OWNER pode resetar todas as contas de membros e mensagens (Zerar tudo exceto o Dono)
+export const resetAllMembers = async (req, res) => {
+  try {
+    await prisma.message.deleteMany({});
+    const deleted = await prisma.user.deleteMany({
+      where: {
+        role: {
+          not: 'OWNER'
+        }
+      }
+    });
+
+    return res.json({
+      message: `Reset concluído! ${deleted.count} contas de membros foram removidas com sucesso.`
+    });
+  } catch (err) {
+    console.error('Erro ao resetar todos os membros:', err);
+    return res.status(500).json({ error: 'Erro ao resetar todos os membros' });
+  }
+};

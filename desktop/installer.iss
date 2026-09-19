@@ -14,11 +14,12 @@ AllowNoIcons=yes
 OutputDir=dist-installer
 OutputBaseFilename=Concord-Setup
 SetupIconFile=icon.ico
-Compression=lzma2/ultra64
+Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
 PrivilegesRequired=lowest
 DisableProgramGroupPage=yes
+CloseApplications=yes
 
 [Languages]
 Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"

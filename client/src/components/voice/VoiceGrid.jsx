@@ -35,6 +35,7 @@ export const VoiceGrid = () => {
   } = useVoice();
 
   const [contextMenu, setContextMenu] = useState(null);
+  const videoRef = useRef(null);
   // Filtra amigos conectados na mesma sala de voz ativa (e garante presença do usuário local)
   const roomUsers = React.useMemo(() => {
     if (!activeChannelId) return [];

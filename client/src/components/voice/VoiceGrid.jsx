@@ -15,11 +15,12 @@ import {
   Radio,
   MoreVertical,
   MoveRight,
-  UserX
+  UserX,
+  Menu
 } from 'lucide-react';
 
 export const VoiceGrid = () => {
-  const { onlineUsers, activeChannel, activeChannelId, adminServerMute, adminKickVoice, adminMoveUser, channels } = useSocket();
+  const { onlineUsers, activeChannel, activeChannelId, adminServerMute, adminKickVoice, adminMoveUser, channels, setIsMobileMenuOpen } = useSocket();
   const { user, isAdmin, isOwner } = useAuth();
   const {
     isSpeaking,
@@ -77,23 +78,54 @@ export const VoiceGrid = () => {
 
   if (isTextChannel) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-gaming-950">
-        <div className="w-16 h-16 rounded-3xl bg-gaming-900 border border-gaming-800 flex items-center justify-center text-3xl mb-4 shadow-xl">
-          💬
+      <div className="flex-1 flex flex-col h-full bg-gaming-950 p-4 sm:p-8 overflow-hidden relative">
+        {/* 📱 Barra Superior Mobile */}
+        <div className="md:hidden flex items-center justify-between pb-3 mb-4 border-b border-gaming-800">
+          <button
+            onClick={() => setIsMobileMenuOpen(true)}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gaming-900 border border-gaming-700 text-white active:scale-95 transition shadow-sm"
+          >
+            <Menu className="w-4 h-4 text-indigo-400" />
+            <span className="text-xs font-bold truncate max-w-[150px]">💬 #{activeChannel?.name}</span>
+          </button>
         </div>
-        <h2 className="text-xl font-bold text-white mb-2">Canal de Texto #{activeChannel?.name}</h2>
-        <p className="text-sm text-slate-400 max-w-md">
-          Abra a gaveta de chat à direita para conversar, enviar prints ou arrastar imagens para seus amigos.
-        </p>
+
+        <div className="flex-1 flex flex-col items-center justify-center text-center">
+          <div className="w-16 h-16 rounded-3xl bg-gaming-900 border border-gaming-800 flex items-center justify-center text-3xl mb-4 shadow-xl">
+            💬
+          </div>
+          <h2 className="text-xl font-bold text-white mb-2">Canal de Texto #{activeChannel?.name}</h2>
+          <p className="text-sm text-slate-400 max-w-md">
+            Abra a gaveta de chat para conversar, enviar prints ou arrastar imagens para seus amigos.
+          </p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-gaming-950 p-6 overflow-hidden relative">
+    <div className="flex-1 flex flex-col h-full bg-gaming-950 p-3 sm:p-6 overflow-hidden relative">
+      {/* 📱 Barra Superior Mobile (Cabeçalho do Canal e Botão de Menu) */}
+      <div className="md:hidden flex items-center justify-between pb-2.5 mb-2 border-b border-gaming-800/80">
+        <button
+          onClick={() => setIsMobileMenuOpen(true)}
+          className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gaming-900 border border-gaming-700 text-white active:scale-95 transition shadow-sm"
+        >
+          <Menu className="w-4 h-4 text-indigo-400" />
+          <span className="text-xs font-bold truncate max-w-[150px]">
+            {activeChannel ? `🔊 #${activeChannel.name}` : 'Canais de Voz'}
+          </span>
+        </button>
+
+        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gaming-900/90 border border-gaming-800 text-[11px] text-slate-400 font-mono">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          <span>{roomUsers.length} na sala</span>
+        </div>
+      </div>
+
       {/* Transmissão de Tela Ativa */}
       {activeScreenStream ? (
-        <div className="flex-1 flex flex-col h-full gap-4">
+        <div className="flex-1 flex flex-col h-full gap-3 sm:gap-4 min-h-0">
           <div className="relative flex-1 bg-black rounded-2xl overflow-hidden border border-gaming-800 flex items-center justify-center group shadow-2xl">
             <video
               ref={videoRef}
@@ -103,8 +135,8 @@ export const VoiceGrid = () => {
             />
 
             {/* Badge de Transmissão */}
-            <div className="absolute top-4 left-4 px-3 py-1.5 rounded-xl bg-black/60 backdrop-blur-md border border-white/10 flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
+            <div className="absolute top-3 left-3 sm:top-4 sm:left-4 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-xl bg-black/60 backdrop-blur-md border border-white/10 flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
               <span className="text-xs font-semibold text-white tracking-wide flex items-center gap-1.5">
                 <Radio className="w-3.5 h-3.5 text-red-400" />
                 {isScreenSharing ? 'Sua Transmissão' : `Tela de ${remoteScreenUser?.username}`}
@@ -114,14 +146,14 @@ export const VoiceGrid = () => {
             <button
               onClick={() => videoRef.current?.requestFullscreen()}
               title="Tela Cheia"
-              className="absolute bottom-4 right-4 p-2.5 rounded-xl bg-black/60 hover:bg-black/80 backdrop-blur-md text-white border border-white/10 transition transform group-hover:scale-105"
+              className="absolute bottom-3 right-3 sm:bottom-4 sm:right-4 p-2 sm:p-2.5 rounded-xl bg-black/60 hover:bg-black/80 backdrop-blur-md text-white border border-white/10 transition transform group-hover:scale-105"
             >
               <Maximize className="w-4 h-4" />
             </button>
           </div>
 
           {/* Miniatura dos Participantes na parte inferior */}
-          <div className="h-24 flex items-center gap-3 overflow-x-auto py-2">
+          <div className="h-20 sm:h-24 flex items-center gap-2 sm:gap-3 overflow-x-auto py-1 sm:py-2">
             {roomUsers.map(u => {
               const isCurrentUser = u.userId === user?.id;
               const isUserSpeaking = isCurrentUser ? isSpeaking : u.isSpeaking;
@@ -130,7 +162,7 @@ export const VoiceGrid = () => {
               return (
                 <div
                   key={u.socketId || u.userId}
-                  className={`flex-shrink-0 flex items-center gap-2.5 px-3 py-2 rounded-xl bg-gaming-900 border transition ${
+                  className={`flex-shrink-0 flex items-center gap-2 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl bg-gaming-900 border transition ${
                     isUserSpeaking ? 'border-emerald-400 ring-2 ring-emerald-500/40' : 'border-gaming-800'
                   }`}
                 >
@@ -142,7 +174,7 @@ export const VoiceGrid = () => {
                     isSpeaking={isUserSpeaking}
                   />
                   <div className="flex flex-col">
-                    <span className="text-xs font-medium text-slate-200 truncate max-w-[80px]">{u.username}</span>
+                    <span className="text-xs font-medium text-slate-200 truncate max-w-[70px] sm:max-w-[80px]">{u.username}</span>
                     <span className="text-[10px] text-slate-500">
                       {isUserMuted ? 'Mutado' : isUserSpeaking ? 'Falando' : 'Ouvindo'}
                     </span>
@@ -154,14 +186,14 @@ export const VoiceGrid = () => {
         </div>
       ) : (
         /* Grade Dinâmica de Avatares */
-        <div className="flex-1 flex flex-col justify-center">
+        <div className="flex-1 flex flex-col justify-center min-h-0">
           {roomUsers.length === 0 ? (
-            <div className="text-center text-slate-500">
+            <div className="text-center text-slate-500 p-4">
               <p className="text-base font-medium">Nenhum amigo neste canal de voz no momento.</p>
-              <p className="text-xs mt-1 text-slate-600">Seus amigos podem entrar clicando no canal na barra lateral.</p>
+              <p className="text-xs mt-1 text-slate-600">Seus amigos podem entrar tocando no canal de voz.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 max-h-full overflow-y-auto p-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 max-h-full overflow-y-auto p-1 sm:p-2">
               {roomUsers.map(u => {
                 const isCurrentUser = u.userId === user?.id;
                 const isUserSpeaking = isCurrentUser ? isSpeaking : u.isSpeaking;

@@ -14,6 +14,7 @@ export const SocketProvider = ({ children }) => {
   const [messages, setMessages] = useState({});
   const [unreadChatCount, setUnreadChatCount] = useState(0);
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Carrega canais do servidor
   const loadChannels = useCallback(async () => {
@@ -180,6 +181,8 @@ export const SocketProvider = ({ children }) => {
         setUnreadChatCount,
         isChatOpen,
         setIsChatOpen,
+        isMobileMenuOpen,
+        setIsMobileMenuOpen,
         joinChannel,
         leaveChannel,
         sendMessage,

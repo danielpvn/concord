@@ -1,4 +1,4 @@
-import { app, BrowserWindow, session, globalShortcut } from 'electron';
+import { app, BrowserWindow, session, desktopCapturer, globalShortcut } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -30,6 +30,30 @@ function createWindow() {
       callback(true);
     } else {
       callback(false);
+    }
+  });
+
+  session.defaultSession.setPermissionCheckHandler((webContents, permission) => {
+    if (permission === 'media' || permission === 'display-capture') {
+      return true;
+    }
+    return false;
+  });
+
+  // Habilita captura de tela nativa no Electron (Screen Share)
+  session.defaultSession.setDisplayMediaRequestHandler(async (request, callback) => {
+    try {
+      const sources = await desktopCapturer.getSources({ types: ['screen', 'window'] });
+      if (sources && sources.length > 0) {
+        // Prioriza captura da tela inteira (monitor primário)
+        const primaryScreen = sources.find(s => s.id.startsWith('screen')) || sources[0];
+        callback({ video: primaryScreen, audio: 'loopback' });
+      } else {
+        callback({});
+      }
+    } catch (err) {
+      console.error('Erro ao capturar telas no Electron:', err);
+      callback({});
     }
   });
 

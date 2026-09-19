@@ -44,15 +44,39 @@ export const VoiceProvider = ({ children }) => {
   });
 
   const localStreamRef = useRef(null);
+  const screenStreamRef = useRef(null);
   const audioContextRef = useRef(null);
   const analyserRef = useRef(null);
   const animationFrameRef = useRef(null);
   const peerConnectionsRef = useRef({}); // socketId_streamType -> RTCPeerConnection
   const pendingIceCandidatesRef = useRef({}); // socketId_streamType -> [candidate, ...]
 
+  const isMutedRef = useRef(isMuted);
+  const isServerMutedRef = useRef(user?.isServerMuted);
+  const sensitivityThresholdRef = useRef(sensitivityThreshold);
+  const lastSpokeTimeRef = useRef(0);
+
+  // Mantém refs sempre sincronizadas com o estado do React
+  useEffect(() => {
+    isMutedRef.current = isMuted;
+  }, [isMuted]);
+
+  useEffect(() => {
+    isServerMutedRef.current = user?.isServerMuted;
+  }, [user?.isServerMuted]);
+
+  useEffect(() => {
+    sensitivityThresholdRef.current = sensitivityThreshold;
+  }, [sensitivityThreshold]);
+
+  useEffect(() => {
+    screenStreamRef.current = screenStream;
+  }, [screenStream]);
+
   // Salva sensibilidade
   const updateSensitivity = (val) => {
     setSensitivityThreshold(val);
+    sensitivityThresholdRef.current = val;
     localStorage.setItem('concord_voice_sensitivity', val.toString());
   };
 
@@ -65,18 +89,26 @@ export const VoiceProvider = ({ children }) => {
     });
   };
 
-  // Inicializa captura de microfone local e analisador de voz (VAD)
+  // Inicializa captura de microfone local e analisador de voz (VAD / Noise Gate)
   const initMicrophone = useCallback(async () => {
     try {
       if (localStreamRef.current && localStreamRef.current.active) {
         return localStreamRef.current;
       }
 
+      // Restrições de áudio com Isolamento de Voz, Cancelamento de Eco e Supressão de Ruído de Alta Fidelidade
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
-          autoGainControl: true
+          autoGainControl: true,
+          googEchoCancellation: true,
+          googAutoGainControl: true,
+          googNoiseSuppression: true,
+          googHighpassFilter: true,
+          googTypingNoiseDetection: true,
+          channelCount: 1,
+          sampleRate: 48000
         },
         video: false
       });
@@ -103,7 +135,7 @@ export const VoiceProvider = ({ children }) => {
         });
       }
 
-      // Configura AudioContext para medidor de voz e detecção automática de fala
+      // Configura AudioContext para medidor de voz e Noise Gate de isolamento
       const AudioContextClass = window.AudioContext || window.webkitAudioContext;
       if (AudioContextClass) {
         if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
@@ -118,6 +150,7 @@ export const VoiceProvider = ({ children }) => {
         const source = audioCtx.createMediaStreamSource(stream);
         const analyser = audioCtx.createAnalyser();
         analyser.fftSize = 256;
+        analyser.smoothingTimeConstant = 0.2;
         source.connect(analyser);
         analyserRef.current = analyser;
 
@@ -135,15 +168,47 @@ export const VoiceProvider = ({ children }) => {
           const levelPercent = Math.min(100, Math.round((average / 128) * 100));
           setMicLevel(levelPercent);
 
-          const effectivelyMuted = isMuted || user?.isServerMuted;
-          const speakingNow = !effectivelyMuted && levelPercent > sensitivityThreshold;
+          const effectivelyMuted = isMutedRef.current || isServerMutedRef.current;
+          const currentTrack = localStreamRef.current?.getAudioTracks()[0];
+          const now = Date.now();
 
-          setIsSpeaking(prev => {
-            if (prev !== speakingNow && socket) {
-              socket.emit('update_voice_state', { isSpeaking: speakingNow });
+          if (effectivelyMuted) {
+            if (currentTrack && currentTrack.enabled) {
+              currentTrack.enabled = false;
             }
-            return speakingNow;
-          });
+            setIsSpeaking(prev => {
+              if (prev && socket) socket.emit('update_voice_state', { isSpeaking: false });
+              return false;
+            });
+          } else {
+            // Isolamento de Voz Real (Noise Gate)
+            const threshold = sensitivityThresholdRef.current;
+            // Se limiar <= 5, microfone aberto contínuo; se > 5, aplica o corte de ruído
+            const isAboveThreshold = threshold <= 5 || levelPercent >= threshold;
+
+            if (isAboveThreshold) {
+              lastSpokeTimeRef.current = now;
+              if (currentTrack && !currentTrack.enabled) {
+                currentTrack.enabled = true;
+              }
+              setIsSpeaking(prev => {
+                if (!prev && socket) socket.emit('update_voice_state', { isSpeaking: true });
+                return true;
+              });
+            } else {
+              // Hangover de 350ms para evitar corte de sílabas no fim das palavras
+              const isWithinHangover = (now - lastSpokeTimeRef.current) < 350;
+              if (!isWithinHangover) {
+                if (currentTrack && currentTrack.enabled) {
+                  currentTrack.enabled = false;
+                }
+                setIsSpeaking(prev => {
+                  if (prev && socket) socket.emit('update_voice_state', { isSpeaking: false });
+                  return false;
+                });
+              }
+            }
+          }
 
           animationFrameRef.current = requestAnimationFrame(checkAudioLevel);
         };
@@ -156,7 +221,7 @@ export const VoiceProvider = ({ children }) => {
       console.warn('Não foi possível acessar o microfone (modo ouvinte ativado):', err);
       return null;
     }
-  }, [isMuted, user?.isServerMuted, sensitivityThreshold, socket]);
+  }, [socket]);
 
   // Aplica Mute / Server Mute nas faixas locais de áudio
   useEffect(() => {
@@ -286,7 +351,7 @@ export const VoiceProvider = ({ children }) => {
         }
 
         if (signal.sdp.type === 'offer') {
-          let stream = streamType === 'screen' ? screenStream : localStreamRef.current;
+          let stream = streamType === 'screen' ? screenStreamRef.current : localStreamRef.current;
           if (!stream && streamType !== 'screen') {
             try {
               stream = await initMicrophone();
@@ -333,10 +398,14 @@ export const VoiceProvider = ({ children }) => {
     } catch (err) {
       console.error(`Erro ao processar sinal WebRTC de ${fromSocketId}:`, err);
     }
-  }, [getOrCreatePeerConnection, screenStream, socket, initMicrophone]);
+  }, [getOrCreatePeerConnection, socket, initMicrophone]);
 
   // Limpeza de conexões e recursos de voz
   const cleanupVoiceConnections = useCallback(() => {
+    if (screenStreamRef.current) {
+      screenStreamRef.current.getTracks().forEach(track => track.stop());
+      screenStreamRef.current = null;
+    }
     Object.values(peerConnectionsRef.current).forEach(pc => {
       try {
         pc.close();
@@ -347,6 +416,8 @@ export const VoiceProvider = ({ children }) => {
     setRemoteStreams({});
     setRemoteScreenStreams({});
     setIsSpeaking(false);
+    setIsScreenSharing(false);
+    setScreenStream(null);
   }, []);
 
   // Escuta WebRTC sockets
@@ -363,8 +434,27 @@ export const VoiceProvider = ({ children }) => {
         initiatePeerCall(socketId, null, 'audio');
       }
 
-      if (screenStream) {
-        initiatePeerCall(socketId, screenStream, 'screen');
+      if (screenStreamRef.current) {
+        initiatePeerCall(socketId, screenStreamRef.current, 'screen');
+      }
+    });
+
+    socket.on('user_screen_state_changed', ({ socketId, isScreenSharing: sharing }) => {
+      console.log(`🖥️ [WebRTC] Estado de tela mudou para ${socketId}: ${sharing}`);
+      if (!sharing) {
+        setRemoteScreenStreams(prev => {
+          const next = { ...prev };
+          delete next[socketId];
+          return next;
+        });
+        const key = `${socketId}_screen`;
+        if (peerConnectionsRef.current[key]) {
+          try {
+            peerConnectionsRef.current[key].close();
+          } catch (e) {}
+          delete peerConnectionsRef.current[key];
+          delete pendingIceCandidatesRef.current[key];
+        }
       }
     });
 
@@ -397,9 +487,10 @@ export const VoiceProvider = ({ children }) => {
     return () => {
       socket.off('webrtc_signal', handleWebRTCSignal);
       socket.off('user_joined_voice');
+      socket.off('user_screen_state_changed');
       socket.off('user_left_voice');
     };
-  }, [socket, handleWebRTCSignal, initiatePeerCall, screenStream]);
+  }, [socket, handleWebRTCSignal, initiatePeerCall]);
 
   // Ativa áudio se estiver em canal de voz, ou limpa se sair
   useEffect(() => {
@@ -427,38 +518,83 @@ export const VoiceProvider = ({ children }) => {
     };
   }, []);
 
+  const stopScreenShare = useCallback(() => {
+    if (screenStreamRef.current) {
+      screenStreamRef.current.getTracks().forEach(track => track.stop());
+      screenStreamRef.current = null;
+    }
+    setScreenStream(null);
+    setIsScreenSharing(false);
+
+    // Fecha conexões WebRTC de tela de saída
+    Object.keys(peerConnectionsRef.current).forEach(key => {
+      if (key.endsWith('_screen')) {
+        try {
+          peerConnectionsRef.current[key].close();
+        } catch (e) {}
+        delete peerConnectionsRef.current[key];
+        delete pendingIceCandidatesRef.current[key];
+      }
+    });
+
+    if (socket) {
+      socket.emit('update_screen_state', { isScreenSharing: false });
+    }
+  }, [socket]);
+
   // Iniciar / Parar Compartilhamento de Tela (com áudio do sistema)
   const toggleScreenShare = async () => {
     if (isScreenSharing) {
-      if (screenStream) {
-        screenStream.getTracks().forEach(track => track.stop());
-      }
-      setScreenStream(null);
-      setIsScreenSharing(false);
-      if (socket) socket.emit('update_screen_state', { isScreenSharing: false });
-    } else {
-      try {
-        const stream = await navigator.mediaDevices.getDisplayMedia({
-          video: {
-            cursor: 'always',
-            frameRate: { ideal: 60, max: 60 },
-            width: { ideal: 1920 },
-            height: { ideal: 1080 }
-          },
-          audio: true // Captura o som do jogo/sistema
-        });
+      stopScreenShare();
+      return;
+    }
 
-        stream.getVideoTracks()[0].onended = () => {
-          setScreenStream(null);
-          setIsScreenSharing(false);
-          if (socket) socket.emit('update_screen_state', { isScreenSharing: false });
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+      alert('O compartilhamento de tela está disponível no aplicativo para PC ou em navegadores desktop (Chrome, Edge, Opera, Firefox). No celular, você pode assistir às transmissões dos amigos!');
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: {
+          cursor: 'always',
+          frameRate: { ideal: 30, max: 60 },
+          width: { ideal: 1920, max: 1920 },
+          height: { ideal: 1080, max: 1080 }
+        },
+        audio: true
+      });
+
+      screenStreamRef.current = stream;
+      setScreenStream(stream);
+      setIsScreenSharing(true);
+
+      const videoTrack = stream.getVideoTracks()[0];
+      if (videoTrack) {
+        videoTrack.onended = () => {
+          stopScreenShare();
         };
+      }
 
-        setScreenStream(stream);
-        setIsScreenSharing(true);
-        if (socket) socket.emit('update_screen_state', { isScreenSharing: true });
-      } catch (err) {
-        console.warn('Compartilhamento de tela cancelado:', err);
+      if (socket) {
+        socket.emit('update_screen_state', { isScreenSharing: true });
+      }
+
+      // Conecta o fluxo de tela com todos os amigos já presentes no canal de voz
+      const peerSocketIds = new Set();
+      Object.keys(peerConnectionsRef.current).forEach(key => {
+        const [peerSocketId] = key.split('_');
+        if (peerSocketId && peerSocketId !== socket?.id) {
+          peerSocketIds.add(peerSocketId);
+        }
+      });
+
+      peerSocketIds.forEach(targetSocketId => {
+        initiatePeerCall(targetSocketId, stream, 'screen');
+      });
+    } catch (err) {
+      if (err.name !== 'NotAllowedError') {
+        console.warn('Compartilhamento de tela cancelado ou indisponível:', err);
       }
     }
   };

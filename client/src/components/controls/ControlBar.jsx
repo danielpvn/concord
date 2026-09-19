@@ -31,10 +31,10 @@ export const ControlBar = () => {
 
   return (
     <>
-      <footer className="h-16 bg-gaming-900 border-t border-gaming-800 px-4 flex items-center justify-between z-30 select-none">
+      <footer className="h-16 bg-gaming-900 border-t border-gaming-800 px-2 sm:px-4 flex items-center justify-between z-30 select-none gap-1 sm:gap-3">
         {/* Lado Esquerdo: Perfil do Jogador Conectado */}
-        <div className="flex items-center gap-3 min-w-[180px]">
-          <div className="relative">
+        <div className="flex items-center gap-2 sm:gap-3 flex-shrink min-w-0 max-w-[120px] xs:max-w-[150px] sm:max-w-none sm:min-w-[150px]">
+          <div className="relative flex-shrink-0">
             <Avatar
               username={user?.username}
               avatarColor={user?.avatarColor}
@@ -43,20 +43,20 @@ export const ControlBar = () => {
               isSpeaking={isSpeaking}
             />
             {isSpeaking && (
-              <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-400 ring-2 ring-gaming-900 animate-pulse" />
+              <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-emerald-400 ring-2 ring-gaming-900 animate-pulse" />
             )}
           </div>
 
-          <div className="flex flex-col">
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs font-bold text-white leading-tight truncate max-w-[110px]">
+          <div className="flex flex-col min-w-0 truncate">
+            <div className="flex items-center gap-1 truncate">
+              <span className="text-xs font-bold text-white leading-tight truncate">
                 {user?.username}
               </span>
-              {isOwner && <Crown className="w-3.5 h-3.5 text-amber-400" title="Dono Supremo" />}
-              {!isOwner && isAdmin && <Shield className="w-3.5 h-3.5 text-indigo-400" title="Administrador" />}
+              {isOwner && <Crown className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-400 flex-shrink-0" title="Dono Supremo" />}
+              {!isOwner && isAdmin && <Shield className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-indigo-400 flex-shrink-0" title="Administrador" />}
             </div>
 
-            <span className="text-[10px] text-slate-400">
+            <span className="text-[10px] text-slate-400 hidden sm:inline truncate">
               {user?.isServerMuted ? (
                 <span className="text-red-400 font-semibold">Mutado pelo Servidor</span>
               ) : effectivelyMuted ? (
@@ -71,13 +71,13 @@ export const ControlBar = () => {
         </div>
 
         {/* Centro: Controles de Áudio, Vídeo e Ações Gamers */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
           {/* Botão de Microfone */}
           <button
             onClick={toggleMute}
             disabled={user?.isServerMuted}
             title={user?.isServerMuted ? 'Você foi mutado por um administrador' : effectivelyMuted ? 'Desmutar Microfone' : 'Mutar Microfone'}
-            className={`p-3 rounded-2xl transition flex items-center justify-center shadow-lg ${
+            className={`p-2 sm:p-3 rounded-xl sm:rounded-2xl transition flex items-center justify-center shadow-md ${
               effectivelyMuted
                 ? 'bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30'
                 : 'bg-gaming-800 text-slate-200 hover:bg-gaming-700 hover:text-white border border-gaming-700'
@@ -90,7 +90,7 @@ export const ControlBar = () => {
           <button
             onClick={toggleDeafen}
             title={isDeafened ? 'Ativar Fone de Ouvido' : 'Ensurdecer (Mutar todo o Som)'}
-            className={`p-3 rounded-2xl transition flex items-center justify-center shadow-lg ${
+            className={`p-2 sm:p-3 rounded-xl sm:rounded-2xl transition flex items-center justify-center shadow-md ${
               isDeafened
                 ? 'bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30'
                 : 'bg-gaming-800 text-slate-200 hover:bg-gaming-700 hover:text-white border border-gaming-700'
@@ -103,7 +103,7 @@ export const ControlBar = () => {
           <button
             onClick={toggleScreenShare}
             title={isScreenSharing ? 'Parar Compartilhamento de Tela' : 'Compartilhar Tela do Jogo'}
-            className={`p-3 rounded-2xl transition flex items-center justify-center shadow-lg ${
+            className={`p-2 sm:p-3 rounded-xl sm:rounded-2xl transition flex items-center justify-center shadow-md ${
               isScreenSharing
                 ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30 animate-pulse'
                 : 'bg-gaming-800 text-slate-200 hover:bg-gaming-700 hover:text-white border border-gaming-700'
@@ -116,7 +116,7 @@ export const ControlBar = () => {
           <button
             onClick={() => setIsSettingsOpen(true)}
             title="Configurações de Áudio, Foto e Perfil"
-            className="p-3 rounded-2xl bg-gaming-800 text-slate-200 hover:bg-gaming-700 hover:text-white border border-gaming-700 transition shadow-lg"
+            className="p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-gaming-800 text-slate-200 hover:bg-gaming-700 hover:text-white border border-gaming-700 transition shadow-md"
           >
             <Settings className="w-4 h-4" />
           </button>
@@ -125,8 +125,8 @@ export const ControlBar = () => {
           {isOwner && (
             <button
               onClick={() => setIsAdminModalOpen(true)}
-              title="Gerenciar Administradores (Exclusivo do Dono)"
-              className="p-3 rounded-2xl bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 border border-amber-500/30 transition shadow-lg flex items-center gap-1.5"
+              title="Gerenciar Administradores & Resetar Logins (Exclusivo do Dono)"
+              className="p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 border border-amber-500/30 transition shadow-md flex items-center justify-center"
             >
               <Crown className="w-4 h-4" />
             </button>
@@ -137,7 +137,7 @@ export const ControlBar = () => {
             <button
               onClick={leaveChannel}
               title="Desconectar do Canal de Voz"
-              className="p-3 rounded-2xl bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-500/30 transition shadow-lg"
+              className="p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-500/30 transition shadow-md flex items-center justify-center"
             >
               <PhoneOff className="w-4 h-4" />
             </button>
@@ -145,20 +145,20 @@ export const ControlBar = () => {
         </div>
 
         {/* Lado Direito: Chat e Logout */}
-        <div className="flex items-center gap-2 min-w-[180px] justify-end">
+        <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0 justify-end">
           <button
             onClick={() => setIsChatOpen(!isChatOpen)}
             title="Abrir / Fechar Chat"
-            className={`relative p-2.5 px-3.5 rounded-xl transition flex items-center gap-2 text-xs font-semibold ${
+            className={`relative p-2 sm:p-2.5 px-2.5 sm:px-3.5 rounded-xl transition flex items-center gap-1.5 text-xs font-semibold ${
               isChatOpen
-                ? 'bg-gaming-accent text-white shadow-lg shadow-indigo-500/20'
+                ? 'bg-gaming-accent text-white shadow-md shadow-indigo-500/20'
                 : 'bg-gaming-800 text-slate-300 hover:bg-gaming-700 hover:text-white border border-gaming-700'
             }`}
           >
             <MessageSquare className="w-4 h-4" />
-            <span className="hidden sm:inline">Chat</span>
+            <span className="hidden md:inline">Chat</span>
             {unreadChatCount > 0 && !isChatOpen && (
-              <span className="w-5 h-5 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center font-bold animate-bounce">
+              <span className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-red-500 text-white text-[9px] sm:text-[10px] flex items-center justify-center font-bold animate-bounce">
                 {unreadChatCount}
               </span>
             )}
@@ -167,7 +167,7 @@ export const ControlBar = () => {
           <button
             onClick={logout}
             title="Sair da Conta"
-            className="p-2.5 rounded-xl text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition"
+            className="p-2 sm:p-2.5 rounded-xl text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition"
           >
             <LogOut className="w-4 h-4" />
           </button>

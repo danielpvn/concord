@@ -23,9 +23,11 @@ if ((!RENDER_API_KEY || !RENDER_SERVICE_ID) && fs.existsSync(rootEnvPath)) {
   });
 }
 
-// Fallback para as credenciais padrão do projeto
-if (!RENDER_API_KEY) RENDER_API_KEY = 'rnd_kw5SyOjQNv5MFkxcPkpQrAs6NQ0L';
-if (!RENDER_SERVICE_ID) RENDER_SERVICE_ID = 'srv-damsldo473hc73emggk0';
+// Credenciais só vêm do .env local (nunca escritas no código)
+if (!RENDER_API_KEY || !RENDER_SERVICE_ID) {
+  console.error('❌ Defina RENDER_API_KEY e RENDER_SERVICE_ID no arquivo .env da raiz do projeto.');
+  process.exit(1);
+}
 
 console.log('🚀 [Render Deploy Watcher] Monitorando status do deploy na nuvem...');
 

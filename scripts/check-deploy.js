@@ -57,10 +57,13 @@ async function checkDeploy() {
           if (status === 'live') {
             console.log('🎉 Deploy concluído com SUCESSO! A aplicação está LIVE na nuvem.');
             console.log('🌐 URL: https://concord-l08s.onrender.com');
-            process.exit(0);
+            // exitCode + return (em vez de process.exit) evita crash do Node no Windows com conexões abertas
+            process.exitCode = 0;
+            return;
           } else if (status === 'build_failed' || status === 'canceled' || status === 'deactivated') {
             console.error(`❌ O deploy falhou com status: ${status}`);
-            process.exit(1);
+            process.exitCode = 1;
+            return;
           }
         }
       }
@@ -73,7 +76,6 @@ async function checkDeploy() {
   }
 
   console.warn('⌛ Tempo limite de espera atingido. Verifique o painel do Render manualmente.');
-  process.exit(0);
 }
 
 checkDeploy();

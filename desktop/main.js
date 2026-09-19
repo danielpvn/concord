@@ -1,12 +1,63 @@
-import { app, BrowserWindow, session, desktopCapturer, globalShortcut } from 'electron';
+import { app, BrowserWindow, session, desktopCapturer, globalShortcut, dialog } from 'electron';
+import updaterPkg from 'electron-updater';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+
+const { autoUpdater } = updaterPkg;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 let mainWindow;
+
+// Uma única janela do Concord: abrir de novo só traz a existente para frente
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+}
+
+// Atualização automática pelas Releases do GitHub (só no app instalado)
+function setupAutoUpdates() {
+  if (!app.isPackaged) return;
+
+  let promptShown = false;
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on('error', (err) => {
+    console.error('Erro na atualização automática:', err?.message || err);
+  });
+
+  autoUpdater.on('update-downloaded', async (info) => {
+    if (promptShown) return;
+    promptShown = true;
+    const { response } = await dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      buttons: ['Reiniciar agora', 'Depois'],
+      defaultId: 0,
+      cancelId: 1,
+      title: 'Atualização do Concord',
+      message: `A versão ${info.version} do Concord está pronta!`,
+      detail: 'Reinicie para aplicar. Se escolher "Depois", ela será instalada quando você fechar o Concord.'
+    });
+    if (response === 0) {
+      autoUpdater.quitAndInstall(true, true);
+    }
+  });
+
+  const check = () => autoUpdater.checkForUpdates().catch((err) => {
+    console.error('Falha ao procurar atualizações:', err?.message || err);
+  });
+  check();
+  setInterval(check, 6 * 60 * 60 * 1000);
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -86,7 +137,10 @@ function createWindow() {
   });
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  createWindow();
+  setupAutoUpdates();
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {

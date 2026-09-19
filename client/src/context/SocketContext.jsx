@@ -24,7 +24,10 @@ export const SocketProvider = ({ children }) => {
       setChannels(data.channels);
       // Se não houver canal ativo selecionado, seleciona o primeiro por padrão
       if (data.channels.length > 0 && !activeChannelId) {
-        const defaultVoice = data.channels.find(c => c.type === 'voice') || data.channels[0];
+        // Volta para o último canal usado (ex.: depois de recarregar para atualizar)
+        const lastChannelId = localStorage.getItem('concord_last_channel');
+        const lastChannel = data.channels.find(c => c.id === lastChannelId);
+        const defaultVoice = lastChannel || data.channels.find(c => c.type === 'voice') || data.channels[0];
         setActiveChannelId(defaultVoice.id);
       }
     } catch (err) {
@@ -52,6 +55,9 @@ export const SocketProvider = ({ children }) => {
 
   useEffect(() => {
     activeChannelIdRef.current = activeChannelId;
+    if (activeChannelId) {
+      localStorage.setItem('concord_last_channel', activeChannelId);
+    }
   }, [activeChannelId]);
 
   useEffect(() => {

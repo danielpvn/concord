@@ -38,11 +38,16 @@ router.get('/image-proxy', requireAuth, async (req, res) => {
 });
 
 // --- Rota de Verificação de Versão (Auto-Update) ---
+// Versão = commit em produção (o Render define RENDER_GIT_COMMIT a cada deploy).
+// O site compara com a versão que carregou e mostra o aviso de atualização.
+const SERVER_VERSION = (process.env.RENDER_GIT_COMMIT || 'dev').slice(0, 12);
+const SERVER_STARTED_AT = new Date().toISOString();
+
 router.get('/version', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
   res.json({
-    version: '1.0.1',
-    releaseDate: new Date().toISOString(),
-    releaseNotes: 'Melhorias de desempenho, upload de avatar personalizado e atualizações em tempo real.'
+    version: SERVER_VERSION,
+    releaseDate: SERVER_STARTED_AT
   });
 });
 

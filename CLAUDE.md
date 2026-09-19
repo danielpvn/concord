@@ -50,7 +50,9 @@ O **Concord** é uma plataforma privada de comunicação para gamers inspirada n
 │   ├── main.js                 # Inicialização do Electron, getDisplayMedia handler nativo
 │   ├── ui/                     # Cópia estática do client/dist para fallback offline
 │   ├── icon.ico                # Ícone gamer do aplicativo
-│   └── package.json            # Scripts de build do executável (Inno Setup / Packager)
+│   ├── release.js              # Publica nova versão nas Releases do GitHub (auto-update)
+│   ├── installer.nsh           # Remove o instalador antigo (Inno Setup 1.0.x) na migração
+│   └── package.json            # Config do electron-builder (NSIS + publish GitHub)
 │
 └── CLAUDE.md                   # Este guia de contexto para Claude
 ```
@@ -75,6 +77,12 @@ O **Concord** é uma plataforma privada de comunicação para gamers inspirada n
 - Ao iniciar `toggleScreenShare`, o stream é transmitido ativamente para todos os peers da sala com `streamType: 'screen'`.
 - O servidor propaga `user_screen_state_changed` e atualiza `onlineUsers`.
 - No Electron (`desktop/main.js`), a captura de tela utiliza `session.defaultSession.setDisplayMediaRequestHandler` com `desktopCapturer.getSources({ types: ['screen', 'window'] })`.
+
+### 3.3.1. App Desktop e Atualização Automática
+- O app carrega o site do Render (`CLOUD_URL`), então **mudanças no site chegam sozinhas** ao app; não precisa publicar versão desktop para isso.
+- Só publique nova versão desktop quando mudar `desktop/main.js` ou a config do Electron: aumente `version` em `desktop/package.json` e rode `npm --prefix desktop run release` (usa o token do `gh`). Os apps instalados baixam e instalam via `electron-updater`.
+- O download `/Concord-Setup.exe` do site redireciona para a última release do GitHub. Não versionar instaladores no repositório.
+- `/api/version` retorna o commit em produção (`RENDER_GIT_COMMIT`); o `UpdateBanner` mostra "Nova versão" para quem está com a página aberta durante um deploy.
 
 ### 3.4. Layout e Responsividade Mobile
 - A aplicação utiliza `h-[100dvh]` para respeitar a barra de navegação dinâmica do Safari/iOS.

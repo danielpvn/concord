@@ -32,6 +32,11 @@ if (!fs.existsSync(uploadsDir)) {
 }
 app.use('/uploads', express.static(uploadsDir));
 
+// Download do app desktop: sempre a última versão publicada nas Releases do GitHub
+app.get('/Concord-Setup.exe', (req, res) => {
+  res.redirect(302, 'https://github.com/danielpvn/concord/releases/latest/download/Concord-Setup.exe');
+});
+
 // Rotas da API
 app.use('/api', apiRoutes);
 

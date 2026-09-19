@@ -7,7 +7,7 @@ import path from 'path';
 import fs from 'fs';
 import apiRoutes from './routes/api.js';
 import { setupSocketHandlers } from './sockets/socketHandler.js';
-import { seedDefaultChannels } from './controllers/channelController.js';
+import { seedDatabase } from './services/seedService.js';
 
 dotenv.config();
 
@@ -70,7 +70,7 @@ const PORT = process.env.PORT || 3001;
 // Inicializar banco e iniciar servidor
 const startServer = async () => {
   try {
-    await seedDefaultChannels();
+    await seedDatabase();
     server.listen(PORT, () => {
       console.log(`🚀 Servidor Concord rodando com sucesso na porta ${PORT}`);
       console.log(`📡 WebSocket pronto para conexões em tempo real`);

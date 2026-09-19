@@ -26,9 +26,8 @@ export const register = async (req, res) => {
       return res.status(400).json({ error: 'Este nome de usuário já está em uso' });
     }
 
-    // Se for o primeiro usuário do sistema, ele se torna o OWNER (Dono) automaticamente!
-    const totalUsers = await prisma.user.count();
-    const role = totalUsers === 0 ? 'OWNER' : 'MEMBER';
+    // Novos cadastros de amigos entram sempre como MEMBER (O cargo OWNER é exclusivo do Dono)
+    const role = 'MEMBER';
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
@@ -71,9 +70,21 @@ export const login = async (req, res) => {
       return res.status(400).json({ error: 'Nome de usuário e senha são obrigatórios' });
     }
 
-    const user = await prisma.user.findUnique({
-      where: { username: username.trim() }
+    const cleanUsername = username.trim();
+    let user = await prisma.user.findUnique({
+      where: { username: cleanUsername }
     });
+
+    if (!user) {
+      user = await prisma.user.findFirst({
+        where: {
+          OR: [
+            { username: cleanUsername.toLowerCase() },
+            { username: cleanUsername.charAt(0).toUpperCase() + cleanUsername.slice(1).toLowerCase() }
+          ]
+        }
+      });
+    }
 
     if (!user) {
       return res.status(400).json({ error: 'Usuário ou senha incorretos' });

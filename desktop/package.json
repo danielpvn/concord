@@ -1,6 +1,6 @@
 {
   "name": "concord-desktop",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Concord - Hub Privado Gamer para Amigos",
   "main": "main.js",
   "type": "module",
@@ -26,6 +26,8 @@
     },
     "files": [
       "main.js",
+      "picker.html",
+      "picker-preload.cjs",
       "package.json",
       "icon.ico",
       "ui/**/*",

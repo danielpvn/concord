@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'" />
+  <title>Compartilhar tela</title>
+  <style>
+    :root {
+      --bg: #0b0e14;
+      --panel: #11151c;
+      --card: #161b24;
+      --border: #283142;
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+      --accent: #6366f1;
+      --accent-hover: #4f46e5;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font: 14px/1.4 'Segoe UI', system-ui, sans-serif;
+      display: flex;
+      flex-direction: column;
+      user-select: none;
+    }
+    header { padding: 18px 20px 0; }
+    h1 { margin: 0 0 12px; font-size: 18px; font-weight: 700; }
+    .tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--border); }
+    .tab {
+      background: none; border: 0; color: var(--muted); font: inherit; font-weight: 600;
+      padding: 8px 14px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px;
+    }
+    .tab:hover { color: var(--text); }
+    .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+    .tab .count { color: var(--muted); font-weight: 400; margin-left: 4px; }
+    main { flex: 1; overflow-y: auto; padding: 16px 20px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+    .card {
+      background: var(--card); border: 2px solid transparent; border-radius: 12px; padding: 8px;
+      cursor: pointer; text-align: left; color: inherit; font: inherit; transition: border-color .12s, background .12s;
+    }
+    .card:hover { background: #1d2330; }
+    .card.selected { border-color: var(--accent); background: #1d2330; }
+    .thumb {
+      width: 100%; aspect-ratio: 16 / 9; border-radius: 8px; background: #000;
+      display: flex; align-items: center; justify-content: center; overflow: hidden;
+    }
+    .thumb img { width: 100%; height: 100%; object-fit: contain; }
+    .name { display: flex; align-items: center; gap: 8px; margin-top: 8px; min-width: 0; }
+    .name img { width: 18px; height: 18px; flex-shrink: 0; }
+    .name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .empty { color: var(--muted); text-align: center; padding: 40px 0; }
+    footer {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      padding: 14px 20px; background: var(--panel); border-top: 1px solid var(--border);
+    }
+    .audio { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; max-width: 60%; }
+    .audio input { margin-top: 3px; width: 16px; height: 16px; accent-color: var(--accent); }
+    .audio small { display: block; color: var(--muted); font-size: 12px; }
+    .buttons { display: flex; gap: 8px; flex-shrink: 0; }
+    button.btn {
+      border: 1px solid var(--border); background: var(--card); color: var(--text);
+      font: inherit; font-weight: 600; padding: 9px 18px; border-radius: 10px; cursor: pointer;
+    }
+    button.btn:hover { background: #1d2330; }
+    button.primary { background: var(--accent); border-color: var(--accent); }
+    button.primary:hover { background: var(--accent-hover); }
+    button.primary:disabled { opacity: .45; cursor: default; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>O que você quer compartilhar?</h1>
+    <div class="tabs" role="tablist">
+      <button class="tab active" data-tab="screens" role="tab">Telas<span class="count" id="count-screens"></span></button>
+      <button class="tab" data-tab="windows" role="tab">Janelas e apps<span class="count" id="count-windows"></span></button>
+    </div>
+  </header>
+
+  <main>
+    <div class="grid" id="grid"></div>
+  </main>
+
+  <footer>
+    <label class="audio">
+      <input type="checkbox" id="audio" />
+      <span>
+        Compartilhar som do computador
+        <small>Inclui todo o som do PC (o Windows não separa por app). Seus amigos podem ouvir a própria voz de volta.</small>
+      </span>
+    </label>
+    <div class="buttons">
+      <button class="btn" id="cancel">Cancelar</button>
+      <button class="btn primary" id="share" disabled>Compartilhar</button>
+    </div>
+  </footer>
+
+  <script>
+    const grid = document.getElementById('grid');
+    const shareBtn = document.getElementById('share');
+    const audioBox = document.getElementById('audio');
+    let sources = [];
+    let activeTab = 'screens';
+    let selectedId = null;
+
+    try {
+      audioBox.checked = localStorage.getItem('concord_share_audio') !== '0';
+    } catch (e) {
+      audioBox.checked = true;
+    }
+    audioBox.addEventListener('change', () => {
+      try { localStorage.setItem('concord_share_audio', audioBox.checked ? '1' : '0'); } catch (e) {}
+    });
+
+    const share = () => {
+      if (selectedId) window.concordPicker.choose(selectedId, audioBox.checked);
+    };
+
+    const render = () => {
+      const list = sources.filter(s => (activeTab === 'screens') === s.isScreen);
+      grid.textContent = '';
+      if (!list.length) {
+        const empty = document.createElement('div');
+        empty.className = 'empty';
+        empty.textContent = activeTab === 'screens' ? 'Nenhuma tela encontrada.' : 'Nenhuma janela aberta.';
+        grid.appendChild(empty);
+      }
+      list.forEach(source => {
+        const card = document.createElement('button');
+        card.className = 'card' + (source.id === selectedId ? ' selected' : '');
+        card.title = source.name;
+
+        const thumb = document.createElement('div');
+        thumb.className = 'thumb';
+        if (source.thumbnail) {
+          const img = document.createElement('img');
+          img.src = source.thumbnail;
+          img.alt = '';
+          thumb.appendChild(img);
+        }
+
+        const name = document.createElement('div');
+        name.className = 'name';
+        if (source.icon) {
+          const icon = document.createElement('img');
+          icon.src = source.icon;
+          icon.alt = '';
+          name.appendChild(icon);
+        }
+        const label = document.createElement('span');
+        label.textContent = source.name;
+        name.appendChild(label);
+
+        card.append(thumb, name);
+        card.addEventListener('click', () => {
+          selectedId = source.id;
+          shareBtn.disabled = false;
+          render();
+        });
+        card.addEventListener('dblclick', () => {
+          selectedId = source.id;
+          share();
+        });
+        grid.appendChild(card);
+      });
+    };
+
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        activeTab = tab.dataset.tab;
+        document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t === tab));
+        render();
+      });
+    });
+
+    shareBtn.addEventListener('click', share);
+    document.getElementById('cancel').addEventListener('click', () => window.concordPicker.cancel());
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') window.concordPicker.cancel();
+      if (e.key === 'Enter') share();
+    });
+
+    window.concordPicker.getSources().then(list => {
+      sources = list;
+      document.getElementById('count-screens').textContent = sources.filter(s => s.isScreen).length;
+      document.getElementById('count-windows').textContent = sources.filter(s => !s.isScreen).length;
+      // Pré-seleciona a tela principal
+      const firstScreen = sources.find(s => s.isScreen);
+      if (firstScreen) {
+        selectedId = firstScreen.id;
+        shareBtn.disabled = false;
+      }
+      render();
+    });
+  </script>
+</body>
+</html>

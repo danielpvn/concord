@@ -1,4 +1,4 @@
-import { app, BrowserWindow, session, desktopCapturer, globalShortcut, dialog } from 'electron';
+import { app, BrowserWindow, session, desktopCapturer, globalShortcut, dialog, ipcMain } from 'electron';
 import updaterPkg from 'electron-updater';
 import path from 'path';
 import fs from 'fs';
@@ -11,8 +11,14 @@ const __dirname = path.dirname(__filename);
 
 let mainWindow;
 
+// Perfil separado (ex.: CONCORD_PROFILE=teste) para rodar outra conta/cópia no mesmo PC
+if (process.env.CONCORD_PROFILE) {
+  app.setPath('userData', path.join(app.getPath('appData'), `concord-desktop-${process.env.CONCORD_PROFILE}`));
+}
+
 // Uma única janela do Concord: abrir de novo só traz a existente para frente
-if (!app.requestSingleInstanceLock()) {
+const hasInstanceLock = app.requestSingleInstanceLock();
+if (!hasInstanceLock) {
   app.quit();
 } else {
   app.on('second-instance', () => {
@@ -20,6 +26,68 @@ if (!app.requestSingleInstanceLock()) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.focus();
     }
+  });
+}
+
+let pickerWindow = null;
+
+// Janela de escolha do que compartilhar. Resolve com { id, audio } ou null se cancelar.
+function showScreenPicker(sources) {
+  return new Promise((resolve) => {
+    if (pickerWindow) {
+      pickerWindow.focus();
+      resolve(null);
+      return;
+    }
+
+    // Não oferece a própria janela do Concord (daria efeito de espelho infinito)
+    const ownWindowId = mainWindow?.getMediaSourceId();
+    const items = sources
+      .filter(s => s.id !== ownWindowId)
+      .map(s => ({
+        id: s.id,
+        name: s.name,
+        isScreen: s.id.startsWith('screen:'),
+        thumbnail: s.thumbnail && !s.thumbnail.isEmpty() ? s.thumbnail.toDataURL() : null,
+        icon: s.appIcon && !s.appIcon.isEmpty() ? s.appIcon.toDataURL() : null
+      }));
+
+    pickerWindow = new BrowserWindow({
+      parent: mainWindow,
+      modal: true,
+      width: 880,
+      height: 640,
+      minWidth: 600,
+      minHeight: 440,
+      backgroundColor: '#0b0e14',
+      title: 'Compartilhar tela',
+      icon: path.join(__dirname, 'icon.ico'),
+      autoHideMenuBar: true,
+      webPreferences: {
+        preload: path.join(__dirname, 'picker-preload.cjs'),
+        contextIsolation: true,
+        sandbox: true,
+        nodeIntegration: false
+      }
+    });
+
+    let settled = false;
+    const finish = (choice) => {
+      if (settled) return;
+      settled = true;
+      ipcMain.removeHandler('picker:get-sources');
+      ipcMain.removeAllListeners('picker:choose');
+      resolve(choice && items.some(i => i.id === choice.id) ? choice : null);
+      if (pickerWindow && !pickerWindow.isDestroyed()) pickerWindow.close();
+    };
+
+    ipcMain.handle('picker:get-sources', () => items);
+    ipcMain.on('picker:choose', (event, choice) => finish(choice));
+    pickerWindow.on('closed', () => {
+      pickerWindow = null;
+      finish(null);
+    });
+    pickerWindow.loadFile(path.join(__dirname, 'picker.html'));
   });
 }
 
@@ -91,22 +159,29 @@ function createWindow() {
     return false;
   });
 
-  // Habilita captura de tela nativa no Electron (Screen Share)
+  // Captura de tela: abre a janela de escolha (monitor ou janela/app + som do PC)
   session.defaultSession.setDisplayMediaRequestHandler(async (request, callback) => {
     try {
-      const sources = await desktopCapturer.getSources({ types: ['screen', 'window'] });
-      if (sources && sources.length > 0) {
-        // Prioriza captura da tela inteira (monitor primário)
-        const primaryScreen = sources.find(s => s.id.startsWith('screen')) || sources[0];
-        callback({ video: primaryScreen, audio: 'loopback' });
-      } else {
-        callback({});
+      const sources = await desktopCapturer.getSources({
+        types: ['screen', 'window'],
+        thumbnailSize: { width: 384, height: 216 },
+        fetchWindowIcons: true
+      });
+      const choice = await showScreenPicker(sources);
+      const source = choice && sources.find(s => s.id === choice.id);
+      if (!source) {
+        callback({}); // cancelado
+        return;
       }
+      callback(choice.audio ? { video: source, audio: 'loopback' } : { video: source });
     } catch (err) {
       console.error('Erro ao capturar telas no Electron:', err);
       callback({});
     }
   });
+
+  // Identifica o app para o site (ex.: saber que existe a janela de escolha de tela)
+  mainWindow.webContents.setUserAgent(`${mainWindow.webContents.getUserAgent()} ConcordDesktop/${app.getVersion()}`);
 
   const CLOUD_URL = process.env.CONCORD_URL || 'https://concord-l08s.onrender.com';
   const localUiPath = path.join(__dirname, 'ui', 'index.html');
@@ -138,6 +213,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  if (!hasInstanceLock) return; // outra janela do Concord já está aberta
   createWindow();
   setupAutoUpdates();
 });

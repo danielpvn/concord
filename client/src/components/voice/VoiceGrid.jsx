@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useSocket } from '../../context/SocketContext';
-import { useVoice } from '../../context/VoiceContext';
+import { useVoice, SCREEN_QUALITY_PRESETS } from '../../context/VoiceContext';
 import { useAuth } from '../../context/AuthContext';
 import { Avatar } from '../ui/Avatar';
 import {
@@ -71,7 +71,7 @@ const MobileHeader = ({ onOpenMenu, label, count }) => (
 // Uma transmissão de tela (minha ou de um amigo)
 const ScreenTile = ({ screen, muted, compact = false, onSelect, onShowAll, className = '' }) => {
   const videoRef = useRef(null);
-  const { outputDeviceId } = useVoice();
+  const { outputDeviceId, screenQuality, changeScreenQuality } = useVoice();
 
   useEffect(() => {
     const video = videoRef.current;
@@ -123,6 +123,22 @@ const ScreenTile = ({ screen, muted, compact = false, onSelect, onShowAll, class
         <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse flex-shrink-0" />
         <span className={`font-semibold text-white truncate ${compact ? 'text-[10px]' : 'text-xs'}`}>{label}</span>
       </div>
+
+      {/* Qualidade da minha transmissão (muda ao vivo, sem reiniciar) */}
+      {screen.isLocal && !compact && (
+        <select
+          value={screenQuality}
+          onChange={(e) => changeScreenQuality(e.target.value)}
+          onClick={(e) => e.stopPropagation()}
+          title="Qualidade da transmissão"
+          aria-label="Qualidade da transmissão"
+          className="absolute top-2 right-2 sm:top-3 sm:right-3 max-w-[45%] px-2 py-1 rounded-lg bg-black/60 backdrop-blur-md border border-white/10 text-xs text-white focus:outline-none cursor-pointer"
+        >
+          {Object.entries(SCREEN_QUALITY_PRESETS).map(([key, preset]) => (
+            <option key={key} value={key} className="bg-gaming-900">{preset.label}</option>
+          ))}
+        </select>
+      )}
 
       {!compact && (
         <div className="absolute bottom-2 right-2 sm:bottom-3 sm:right-3 flex items-center gap-1.5">

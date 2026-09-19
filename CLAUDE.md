@@ -76,7 +76,10 @@ O **Concord** é uma plataforma privada de comunicação para gamers inspirada n
 ### 3.3. Compartilhamento de Tela (Screen Sharing)
 - Ao iniciar `toggleScreenShare`, o stream é transmitido ativamente para todos os peers da sala com `streamType: 'screen'`.
 - O servidor propaga `user_screen_state_changed` e atualiza `onlineUsers`.
-- No Electron (`desktop/main.js`), a captura de tela utiliza `session.defaultSession.setDisplayMediaRequestHandler` com `desktopCapturer.getSources({ types: ['screen', 'window'] })`.
+- No Electron (`desktop/main.js`), `setDisplayMediaRequestHandler` abre a janela de escolha (`picker.html` + `picker-preload.cjs`) com monitores e janelas de `desktopCapturer.getSources` e a opção de som do PC (`loopback`, captura o som do sistema inteiro). Cancelar chama `callback({})`.
+- O app adiciona `ConcordDesktop/<versão>` ao User-Agent; o site usa isso para diferenciar o app antigo (sem janela de escolha).
+- Qualidade da tela: `SCREEN_QUALITY_PRESETS` em `VoiceContext.jsx` (resolução/FPS via `applyConstraints` e bitrate via `sender.setParameters`), trocável ao vivo pelo seletor na própria transmissão.
+- Testar o app em paralelo com o instalado: `CONCORD_PROFILE=teste` (perfil separado) e `CONCORD_URL=http://localhost:5173`.
 
 ### 3.3.1. App Desktop e Atualização Automática
 - O app carrega o site do Render (`CLOUD_URL`), então **mudanças no site chegam sozinhas** ao app; não precisa publicar versão desktop para isso.

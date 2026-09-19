@@ -16,6 +16,23 @@ const MIC_CONSTRAINTS = {
   channelCount: 1
 };
 
+// Qualidades de transmissão de tela. O bitrate vale por amigo assistindo (cada um recebe uma cópia).
+export const SCREEN_QUALITY_PRESETS = {
+  '720p30': { label: '720p 30 FPS', width: 1280, height: 720, fps: 30, maxBitrate: 2_500_000 },
+  '1080p30': { label: '1080p 30 FPS', width: 1920, height: 1080, fps: 30, maxBitrate: 4_500_000 },
+  '1080p60': { label: '1080p 60 FPS', width: 1920, height: 1080, fps: 60, maxBitrate: 8_000_000 },
+  source: { label: 'Original 60 FPS', width: null, height: null, fps: 60, maxBitrate: 10_000_000 }
+};
+const DEFAULT_SCREEN_QUALITY = '1080p30';
+
+const screenVideoConstraints = (presetKey) => {
+  const preset = SCREEN_QUALITY_PRESETS[presetKey] || SCREEN_QUALITY_PRESETS[DEFAULT_SCREEN_QUALITY];
+  return {
+    frameRate: { ideal: preset.fps, max: preset.fps },
+    ...(preset.width ? { width: { ideal: preset.width, max: preset.width }, height: { ideal: preset.height, max: preset.height } } : {})
+  };
+};
+
 export const supportsOutputSelection =
   typeof HTMLMediaElement !== 'undefined' && 'setSinkId' in HTMLMediaElement.prototype;
 
@@ -59,6 +76,11 @@ export const VoiceProvider = ({ children }) => {
 
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [screenStream, setScreenStream] = useState(null);
+  const [screenQuality, setScreenQualityState] = useState(() => {
+    const saved = localStorage.getItem('concord_screen_quality');
+    return SCREEN_QUALITY_PRESETS[saved] ? saved : DEFAULT_SCREEN_QUALITY;
+  });
+  const screenQualityRef = useRef(screenQuality);
   const [remoteStreams, setRemoteStreams] = useState({}); // socketId -> MediaStream
   const [remoteScreenStreams, setRemoteScreenStreams] = useState({}); // socketId -> MediaStream
   const [peerStates, setPeerStates] = useState({}); // socketId -> connectionState (áudio)
@@ -263,6 +285,9 @@ export const VoiceProvider = ({ children }) => {
       if (type === 'audio') {
         setPeerStates(prev => ({ ...prev, [socketId]: state }));
       }
+      if (type === 'screen' && state === 'connected') {
+        applyScreenEncoding(peer);
+      }
       if (state === 'failed') {
         // Tenta novamente com novos candidatos ICE (útil ao trocar Wi-Fi/4G)
         try {
@@ -334,6 +359,24 @@ export const VoiceProvider = ({ children }) => {
     if (peersRef.current.get(peerKey('audio', socketId)) !== peer) return;
     await attachLocalAudio(peer); // dispara onnegotiationneeded -> oferta
   }, [closePeer]);
+
+  const applyScreenEncoding = async (peer) => {
+    const preset = SCREEN_QUALITY_PRESETS[screenQualityRef.current];
+    if (!preset || peer.pc.signalingState === 'closed') return;
+    for (const sender of peer.pc.getSenders()) {
+      if (sender.track?.kind !== 'video') continue;
+      try {
+        const params = sender.getParameters();
+        if (!params.encodings || !params.encodings.length) params.encodings = [{}];
+        params.encodings[0].maxBitrate = preset.maxBitrate;
+        params.encodings[0].maxFramerate = preset.fps;
+        params.degradationPreference = 'maintain-framerate';
+        await sender.setParameters(params);
+      } catch (err) {
+        console.warn('[WebRTC] Não foi possível ajustar a qualidade da tela:', err);
+      }
+    }
+  };
 
   const connectScreenPeer = useCallback((socketId) => {
     const stream = screenStreamRef.current;
@@ -654,11 +697,7 @@ export const VoiceProvider = ({ children }) => {
 
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: {
-          frameRate: { ideal: 30, max: 60 },
-          width: { ideal: 1920, max: 1920 },
-          height: { ideal: 1080, max: 1080 }
-        },
+        video: screenVideoConstraints(screenQualityRef.current),
         audio: true
       });
 
@@ -680,14 +719,34 @@ export const VoiceProvider = ({ children }) => {
       roomPeersRef.current.forEach(socketId => connectScreenPeer(socketId));
     } catch (err) {
       console.warn('Compartilhamento de tela cancelado ou indisponível:', err);
-      const isDesktopApp = /Electron/i.test(navigator.userAgent);
-      if (isDesktopApp) {
-        // No app desktop não existe "cancelar": falha aqui indica instalação antiga sem suporte a captura
+      const userAgent = navigator.userAgent;
+      // O app 1.1.1+ se identifica e tem janela de escolha (onde dá para cancelar)
+      const isLegacyDesktopApp = /Electron/i.test(userAgent) && !/ConcordDesktop\//.test(userAgent);
+      if (isLegacyDesktopApp) {
         alert('Não foi possível capturar a tela. Seu aplicativo Concord para PC está desatualizado: baixe e instale a versão mais recente em ' + window.location.origin + '/Concord-Setup.exe');
       } else if (err.name !== 'NotAllowedError' && err.name !== 'AbortError') {
         alert(`Não foi possível compartilhar a tela (${err.name}).`);
       }
     }
+  };
+
+  const changeScreenQuality = async (presetKey) => {
+    if (!SCREEN_QUALITY_PRESETS[presetKey]) return;
+    screenQualityRef.current = presetKey;
+    setScreenQualityState(presetKey);
+    localStorage.setItem('concord_screen_quality', presetKey);
+
+    const videoTrack = screenStreamRef.current?.getVideoTracks()[0];
+    if (videoTrack) {
+      try {
+        await videoTrack.applyConstraints(screenVideoConstraints(presetKey));
+      } catch (err) {
+        console.warn('[Tela] Não foi possível mudar a resolução:', err);
+      }
+    }
+    peersRef.current.forEach(peer => {
+      if (peer.type === 'screen') applyScreenEncoding(peer);
+    });
   };
 
   // ---------------------------------------------------------------------------
@@ -808,6 +867,8 @@ export const VoiceProvider = ({ children }) => {
         toggleMute,
         toggleDeafen,
         toggleScreenShare,
+        screenQuality,
+        changeScreenQuality,
         initMicrophone,
         cleanupVoiceConnections
       }}

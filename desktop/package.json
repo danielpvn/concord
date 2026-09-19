@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "start": "electron .",
-    "build:pack": "electron-packager . Concord --platform=win32 --arch=x64 --icon=icon.ico --out=dist --overwrite",
+    "build:pack": "electron-packager . Concord --platform=win32 --arch=x64 --icon=icon.ico --out=dist --overwrite --ignore=\"(^/dist|^/dist-installer|^/installer.iss|^/build-installer.js)\"",
     "build:installer": "node build-installer.js",
     "build:all": "npm run build:pack && npm run build:installer"
   },

@@ -15,7 +15,9 @@ const RemoteAudioTrack = ({ socketId, stream, userVolumes, isDeafened, onlineUse
     if (!audioEl || !stream) return;
 
     audioEl.srcObject = stream;
-    audioEl.volume = normalizedVolume;
+    try {
+      audioEl.volume = normalizedVolume;
+    } catch (e) {}
 
     const playAudio = () => {
       const promise = audioEl.play();
@@ -30,14 +32,14 @@ const RemoteAudioTrack = ({ socketId, stream, userVolumes, isDeafened, onlineUse
 
     // Desbloqueia reprodução caso a política de autoplay do navegador pause inicialmente
     const handleGesture = () => {
-      if (audioEl && audioEl.paused) {
+      if (audioEl) {
         audioEl.play().catch(console.warn);
       }
     };
 
-    window.addEventListener('click', handleGesture, { once: true });
-    window.addEventListener('keydown', handleGesture, { once: true });
-    window.addEventListener('touchstart', handleGesture, { once: true });
+    window.addEventListener('click', handleGesture);
+    window.addEventListener('keydown', handleGesture);
+    window.addEventListener('touchstart', handleGesture);
 
     return () => {
       window.removeEventListener('click', handleGesture);
@@ -51,7 +53,9 @@ const RemoteAudioTrack = ({ socketId, stream, userVolumes, isDeafened, onlineUse
 
   useEffect(() => {
     if (audioRef.current) {
-      audioRef.current.volume = normalizedVolume;
+      try {
+        audioRef.current.volume = normalizedVolume;
+      } catch (e) {}
     }
   }, [normalizedVolume]);
 
@@ -60,8 +64,8 @@ const RemoteAudioTrack = ({ socketId, stream, userVolumes, isDeafened, onlineUse
       ref={audioRef}
       autoPlay
       playsInline
-      className="hidden"
       data-socket-id={socketId}
+      style={{ position: 'fixed', top: -9999, left: -9999, width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
     />
   );
 };
@@ -74,7 +78,7 @@ export const RemoteAudioRenderer = () => {
   if (entries.length === 0) return null;
 
   return (
-    <div className="hidden" aria-hidden="true">
+    <div style={{ position: 'fixed', top: -9999, left: -9999, width: 1, height: 1, opacity: 0, pointerEvents: 'none' }} aria-hidden="true">
       {entries.map(([socketId, stream]) => (
         <RemoteAudioTrack
           key={socketId}

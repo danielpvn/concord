@@ -45,6 +45,12 @@ export const SocketProvider = ({ children }) => {
     }
   }, []);
 
+  const activeChannelIdRef = useRef(activeChannelId);
+
+  useEffect(() => {
+    activeChannelIdRef.current = activeChannelId;
+  }, [activeChannelId]);
+
   // Conexão com Socket.io
   useEffect(() => {
     if (!user) {
@@ -61,11 +67,31 @@ export const SocketProvider = ({ children }) => {
 
     newSocket.on('connect', () => {
       console.log('⚡ Conectado ao servidor Concord WebSocket');
-      newSocket.emit('join_server', { userId: user.id });
+      newSocket.emit('join_server', {
+        userId: user.id,
+        channelId: activeChannelIdRef.current
+      });
+      if (activeChannelIdRef.current) {
+        newSocket.emit('join_channel', { channelId: activeChannelIdRef.current });
+      }
     });
 
     newSocket.on('online_users_updated', (users) => {
       setOnlineUsers(users);
+    });
+
+    newSocket.on('user_voice_state_changed', ({ socketId, isMuted, isDeafened, isSpeaking, isServerMuted }) => {
+      setOnlineUsers(prev => prev.map(u => u.socketId === socketId ? {
+        ...u,
+        ...(isMuted !== undefined && { isMuted }),
+        ...(isDeafened !== undefined && { isDeafened }),
+        ...(isSpeaking !== undefined && { isSpeaking }),
+        ...(isServerMuted !== undefined && { isServerMuted })
+      } : u));
+    });
+
+    newSocket.on('user_screen_state_changed', ({ socketId, isScreenSharing }) => {
+      setOnlineUsers(prev => prev.map(u => u.socketId === socketId ? { ...u, isScreenSharing: Boolean(isScreenSharing) } : u));
     });
 
     newSocket.on('new_message', ({ message }) => {
@@ -110,7 +136,7 @@ export const SocketProvider = ({ children }) => {
   useEffect(() => {
     if (activeChannelId) {
       loadMessages(activeChannelId);
-      if (socket) {
+      if (socket && socket.connected) {
         socket.emit('join_channel', { channelId: activeChannelId });
       }
     }

@@ -35,20 +35,42 @@ export const VoiceGrid = () => {
   } = useVoice();
 
   const [contextMenu, setContextMenu] = useState(null);
-  const videoRef = useRef(null);
-
-  // Filtra amigos conectados na mesma sala de voz ativa
-  const roomUsers = onlineUsers.filter(u => u.channelId === activeChannelId);
+  // Filtra amigos conectados na mesma sala de voz ativa (e garante presença do usuário local)
+  const roomUsers = React.useMemo(() => {
+    if (!activeChannelId) return [];
+    const inRoom = onlineUsers.filter(u => u.channelId === activeChannelId);
+    if (user && !inRoom.some(u => u.userId === user.id) && activeChannel?.type === 'voice') {
+      return [
+        {
+          socketId: socket?.id || 'me',
+          userId: user.id,
+          username: user.username,
+          avatarColor: user.avatarColor,
+          avatarUrl: user.avatarUrl,
+          role: user.role,
+          isServerMuted: user.isServerMuted,
+          channelId: activeChannelId,
+          isMuted: isMuted,
+          isDeafened: isDeafened,
+          isSpeaking: isSpeaking,
+          isScreenSharing: isScreenSharing
+        },
+        ...inRoom
+      ];
+    }
+    return inRoom;
+  }, [onlineUsers, activeChannelId, user, activeChannel, socket?.id, isMuted, isDeafened, isSpeaking, isScreenSharing]);
 
   // Encontra se alguém está compartilhando tela na sala (local ou remoto)
-  const remoteScreenUser = roomUsers.find(u => u.isScreenSharing && u.userId !== user?.id);
+  const remoteScreenUser = roomUsers.find(u => (u.isScreenSharing || remoteScreenStreams[u.socketId]) && u.userId !== user?.id);
   const activeScreenStream = isScreenSharing
     ? screenStream
-    : remoteScreenUser && remoteScreenStreams[remoteScreenUser.socketId];
+    : (remoteScreenUser && remoteScreenStreams[remoteScreenUser.socketId]) || Object.values(remoteScreenStreams || {})[0];
 
   useEffect(() => {
     if (videoRef.current && activeScreenStream) {
       videoRef.current.srcObject = activeScreenStream;
+      videoRef.current.play().catch(console.warn);
     }
   }, [activeScreenStream]);
 
@@ -193,7 +215,7 @@ export const VoiceGrid = () => {
               <p className="text-xs mt-1 text-slate-600">Seus amigos podem entrar tocando no canal de voz.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 max-h-full overflow-y-auto p-1 sm:p-2">
+            <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-4 max-h-full overflow-y-auto p-1 sm:p-2">
               {roomUsers.map(u => {
                 const isCurrentUser = u.userId === user?.id;
                 const isUserSpeaking = isCurrentUser ? isSpeaking : u.isSpeaking;
@@ -206,7 +228,7 @@ export const VoiceGrid = () => {
                     draggable={isAdmin}
                     onDragStart={(e) => handleDragStart(e, u.userId)}
                     onContextMenu={(e) => handleContextMenu(e, u)}
-                    className={`relative flex flex-col items-center justify-center p-6 rounded-2xl bg-gaming-900/90 border transition-all duration-200 group shadow-lg ${
+                    className={`relative flex flex-col items-center justify-center p-3.5 sm:p-6 rounded-xl sm:rounded-2xl bg-gaming-900/90 border transition-all duration-200 group shadow-lg ${
                       isUserSpeaking
                         ? 'border-emerald-400 ring-4 ring-emerald-500/30 scale-[1.02]'
                         : 'border-gaming-800 hover:border-gaming-700'

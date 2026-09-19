@@ -31,9 +31,9 @@ export const ControlBar = () => {
 
   return (
     <>
-      <footer className="h-16 bg-gaming-900 border-t border-gaming-800 px-2 sm:px-4 flex items-center justify-between z-30 select-none gap-1 sm:gap-3">
+      <footer className="h-14 sm:h-16 bg-gaming-900 border-t border-gaming-800 px-1.5 sm:px-4 flex items-center justify-between z-30 select-none gap-1 sm:gap-3 w-full max-w-full overflow-hidden box-border">
         {/* Lado Esquerdo: Perfil do Jogador Conectado */}
-        <div className="flex items-center gap-2 sm:gap-3 flex-shrink min-w-0 max-w-[120px] xs:max-w-[150px] sm:max-w-none sm:min-w-[150px]">
+        <div className="flex items-center gap-1.5 sm:gap-3 flex-shrink min-w-0 max-w-[85px] xs:max-w-[120px] sm:max-w-none sm:min-w-[140px]">
           <div className="relative flex-shrink-0">
             <Avatar
               username={user?.username}
@@ -43,20 +43,20 @@ export const ControlBar = () => {
               isSpeaking={isSpeaking}
             />
             {isSpeaking && (
-              <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-emerald-400 ring-2 ring-gaming-900 animate-pulse" />
+              <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 sm:w-3 sm:h-3 rounded-full bg-emerald-400 ring-2 ring-gaming-900 animate-pulse" />
             )}
           </div>
 
           <div className="flex flex-col min-w-0 truncate">
-            <div className="flex items-center gap-1 truncate">
-              <span className="text-xs font-bold text-white leading-tight truncate">
+            <div className="flex items-center gap-0.5 sm:gap-1 truncate">
+              <span className="text-[11px] sm:text-xs font-bold text-white leading-tight truncate">
                 {user?.username}
               </span>
-              {isOwner && <Crown className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-400 flex-shrink-0" title="Dono Supremo" />}
-              {!isOwner && isAdmin && <Shield className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-indigo-400 flex-shrink-0" title="Administrador" />}
+              {isOwner && <Crown className="w-3 h-3 text-amber-400 flex-shrink-0" title="Dono Supremo" />}
+              {!isOwner && isAdmin && <Shield className="w-3 h-3 text-indigo-400 flex-shrink-0" title="Administrador" />}
             </div>
 
-            <span className="text-[10px] text-slate-400 hidden sm:inline truncate">
+            <span className="text-[9px] sm:text-[10px] text-slate-400 hidden sm:inline truncate">
               {user?.isServerMuted ? (
                 <span className="text-red-400 font-semibold">Mutado pelo Servidor</span>
               ) : effectivelyMuted ? (
@@ -71,54 +71,54 @@ export const ControlBar = () => {
         </div>
 
         {/* Centro: Controles de Áudio, Vídeo e Ações Gamers */}
-        <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
+        <div className="flex items-center gap-0.5 xs:gap-1 sm:gap-2 flex-shrink-0">
           {/* Botão de Microfone */}
           <button
             onClick={toggleMute}
             disabled={user?.isServerMuted}
             title={user?.isServerMuted ? 'Você foi mutado por um administrador' : effectivelyMuted ? 'Desmutar Microfone' : 'Mutar Microfone'}
-            className={`p-2 sm:p-3 rounded-xl sm:rounded-2xl transition flex items-center justify-center shadow-md ${
+            className={`p-1.5 xs:p-2 sm:p-3 rounded-lg sm:rounded-2xl transition flex items-center justify-center shadow-sm sm:shadow-md ${
               effectivelyMuted
                 ? 'bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30'
                 : 'bg-gaming-800 text-slate-200 hover:bg-gaming-700 hover:text-white border border-gaming-700'
             } disabled:opacity-50`}
           >
-            {effectivelyMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+            {effectivelyMuted ? <MicOff className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <Mic className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
           </button>
 
           {/* Botão de Ensurdecer */}
           <button
             onClick={toggleDeafen}
             title={isDeafened ? 'Ativar Fone de Ouvido' : 'Ensurdecer (Mutar todo o Som)'}
-            className={`p-2 sm:p-3 rounded-xl sm:rounded-2xl transition flex items-center justify-center shadow-md ${
+            className={`p-1.5 xs:p-2 sm:p-3 rounded-lg sm:rounded-2xl transition flex items-center justify-center shadow-sm sm:shadow-md ${
               isDeafened
                 ? 'bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30'
                 : 'bg-gaming-800 text-slate-200 hover:bg-gaming-700 hover:text-white border border-gaming-700'
             }`}
           >
-            {isDeafened ? <VolumeX className="w-4 h-4" /> : <Headphones className="w-4 h-4" />}
+            {isDeafened ? <VolumeX className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <Headphones className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
           </button>
 
           {/* Botão de Compartilhar Tela */}
           <button
             onClick={toggleScreenShare}
             title={isScreenSharing ? 'Parar Compartilhamento de Tela' : 'Compartilhar Tela do Jogo'}
-            className={`p-2 sm:p-3 rounded-xl sm:rounded-2xl transition flex items-center justify-center shadow-md ${
+            className={`p-1.5 xs:p-2 sm:p-3 rounded-lg sm:rounded-2xl transition flex items-center justify-center shadow-sm sm:shadow-md ${
               isScreenSharing
                 ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30 animate-pulse'
                 : 'bg-gaming-800 text-slate-200 hover:bg-gaming-700 hover:text-white border border-gaming-700'
             }`}
           >
-            <Tv className="w-4 h-4" />
+            <Tv className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           </button>
 
           {/* Botão de Configurações de Áudio & Perfil */}
           <button
             onClick={() => setIsSettingsOpen(true)}
             title="Configurações de Áudio, Foto e Perfil"
-            className="p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-gaming-800 text-slate-200 hover:bg-gaming-700 hover:text-white border border-gaming-700 transition shadow-md"
+            className="p-1.5 xs:p-2 sm:p-3 rounded-lg sm:rounded-2xl bg-gaming-800 text-slate-200 hover:bg-gaming-700 hover:text-white border border-gaming-700 transition shadow-sm sm:shadow-md"
           >
-            <Settings className="w-4 h-4" />
+            <Settings className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           </button>
 
           {/* Botão Exclusivo do Dono */}
@@ -126,9 +126,9 @@ export const ControlBar = () => {
             <button
               onClick={() => setIsAdminModalOpen(true)}
               title="Gerenciar Administradores & Resetar Logins (Exclusivo do Dono)"
-              className="p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 border border-amber-500/30 transition shadow-md flex items-center justify-center"
+              className="p-1.5 xs:p-2 sm:p-3 rounded-lg sm:rounded-2xl bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 border border-amber-500/30 transition shadow-sm sm:shadow-md flex items-center justify-center"
             >
-              <Crown className="w-4 h-4" />
+              <Crown className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </button>
           )}
 
@@ -137,28 +137,28 @@ export const ControlBar = () => {
             <button
               onClick={leaveChannel}
               title="Desconectar do Canal de Voz"
-              className="p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-500/30 transition shadow-md flex items-center justify-center"
+              className="p-1.5 xs:p-2 sm:p-3 rounded-lg sm:rounded-2xl bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-500/30 transition shadow-sm sm:shadow-md flex items-center justify-center"
             >
-              <PhoneOff className="w-4 h-4" />
+              <PhoneOff className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </button>
           )}
         </div>
 
         {/* Lado Direito: Chat e Logout */}
-        <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0 justify-end">
+        <div className="flex items-center gap-0.5 xs:gap-1 sm:gap-2 flex-shrink-0 justify-end">
           <button
             onClick={() => setIsChatOpen(!isChatOpen)}
             title="Abrir / Fechar Chat"
-            className={`relative p-2 sm:p-2.5 px-2.5 sm:px-3.5 rounded-xl transition flex items-center gap-1.5 text-xs font-semibold ${
+            className={`relative p-1.5 xs:p-2 sm:p-2.5 px-2 xs:px-2.5 sm:px-3.5 rounded-lg sm:rounded-xl transition flex items-center gap-1 text-xs font-semibold ${
               isChatOpen
-                ? 'bg-gaming-accent text-white shadow-md shadow-indigo-500/20'
+                ? 'bg-gaming-accent text-white shadow-sm sm:shadow-md shadow-indigo-500/20'
                 : 'bg-gaming-800 text-slate-300 hover:bg-gaming-700 hover:text-white border border-gaming-700'
             }`}
           >
-            <MessageSquare className="w-4 h-4" />
+            <MessageSquare className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             <span className="hidden md:inline">Chat</span>
             {unreadChatCount > 0 && !isChatOpen && (
-              <span className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-red-500 text-white text-[9px] sm:text-[10px] flex items-center justify-center font-bold animate-bounce">
+              <span className="w-3.5 h-3.5 sm:w-5 sm:h-5 rounded-full bg-red-500 text-white text-[8px] sm:text-[10px] flex items-center justify-center font-bold animate-bounce">
                 {unreadChatCount}
               </span>
             )}
@@ -167,9 +167,9 @@ export const ControlBar = () => {
           <button
             onClick={logout}
             title="Sair da Conta"
-            className="p-2 sm:p-2.5 rounded-xl text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition"
+            className="p-1.5 xs:p-2 sm:p-2.5 rounded-lg sm:rounded-xl text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition"
           >
-            <LogOut className="w-4 h-4" />
+            <LogOut className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           </button>
         </div>
       </footer>

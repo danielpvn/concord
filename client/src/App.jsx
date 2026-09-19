@@ -32,7 +32,7 @@ export const App = () => {
   }
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-gaming-950 text-slate-100 overflow-hidden font-sans">
+    <div className="flex flex-col h-[100dvh] w-screen max-w-full bg-gaming-950 text-slate-100 overflow-hidden font-sans">
       {/* Banner de Atualização Automática de Novas Versões */}
       <UpdateBanner />
 

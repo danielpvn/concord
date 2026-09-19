@@ -25,6 +25,9 @@ export const setupSocketHandlers = (io) => {
 
       if (!userFromDb) return;
 
+      const existing = connectedUsers.get(socket.id);
+      const initialChannel = userData.channelId || existing?.channelId || null;
+
       connectedUsers.set(socket.id, {
         socketId: socket.id,
         userId: userFromDb.id,
@@ -33,12 +36,16 @@ export const setupSocketHandlers = (io) => {
         avatarUrl: userFromDb.avatarUrl,
         role: userFromDb.role,
         isServerMuted: userFromDb.isServerMuted,
-        channelId: null,
+        channelId: initialChannel,
         isMuted: false,
         isDeafened: false,
         isSpeaking: false,
         isScreenSharing: false
       });
+
+      if (initialChannel) {
+        socket.join(`channel_${initialChannel}`);
+      }
 
       // Transmite a lista de todos os usuários online atualizada
       io.emit('online_users_updated', Array.from(connectedUsers.values()));
@@ -64,7 +71,7 @@ export const setupSocketHandlers = (io) => {
       const previousChannel = user.channelId;
       user.channelId = channelId;
 
-      if (previousChannel) {
+      if (previousChannel && previousChannel !== channelId) {
         socket.leave(`channel_${previousChannel}`);
         // Notifica o canal anterior que o usuário saiu
         socket.to(`channel_${previousChannel}`).emit('user_left_voice', {
@@ -75,7 +82,7 @@ export const setupSocketHandlers = (io) => {
 
       socket.join(`channel_${channelId}`);
 
-      // Notifica todos os usuários do novo canal
+      // Notifica todos os usuários da atualização
       io.emit('online_users_updated', Array.from(connectedUsers.values()));
       socket.to(`channel_${channelId}`).emit('user_joined_voice', {
         socketId: socket.id,
@@ -128,6 +135,7 @@ export const setupSocketHandlers = (io) => {
           isServerMuted: user.isServerMuted
         });
       }
+      io.emit('online_users_updated', Array.from(connectedUsers.values()));
     });
 
     // --- Atualização de Compartilhamento de Tela ---
@@ -145,6 +153,7 @@ export const setupSocketHandlers = (io) => {
           isScreenSharing: user.isScreenSharing
         });
       }
+      io.emit('online_users_updated', Array.from(connectedUsers.values()));
     });
 
     // --- Envio de Mensagem de Texto no Chat ---

@@ -170,45 +170,20 @@ export const VoiceProvider = ({ children }) => {
 
           const effectivelyMuted = isMutedRef.current || isServerMutedRef.current;
           const currentTrack = localStreamRef.current?.getAudioTracks()[0];
-          const now = Date.now();
 
-          if (effectivelyMuted) {
-            if (currentTrack && currentTrack.enabled) {
-              currentTrack.enabled = false;
-            }
-            setIsSpeaking(prev => {
-              if (prev && socket) socket.emit('update_voice_state', { isSpeaking: false });
-              return false;
-            });
-          } else {
-            // Isolamento de Voz Real (Noise Gate)
-            const threshold = sensitivityThresholdRef.current;
-            // Se limiar <= 5, microfone aberto contínuo; se > 5, aplica o corte de ruído
-            const isAboveThreshold = threshold <= 5 || levelPercent >= threshold;
-
-            if (isAboveThreshold) {
-              lastSpokeTimeRef.current = now;
-              if (currentTrack && !currentTrack.enabled) {
-                currentTrack.enabled = true;
-              }
-              setIsSpeaking(prev => {
-                if (!prev && socket) socket.emit('update_voice_state', { isSpeaking: true });
-                return true;
-              });
-            } else {
-              // Hangover de 350ms para evitar corte de sílabas no fim das palavras
-              const isWithinHangover = (now - lastSpokeTimeRef.current) < 350;
-              if (!isWithinHangover) {
-                if (currentTrack && currentTrack.enabled) {
-                  currentTrack.enabled = false;
-                }
-                setIsSpeaking(prev => {
-                  if (prev && socket) socket.emit('update_voice_state', { isSpeaking: false });
-                  return false;
-                });
-              }
-            }
+          if (currentTrack) {
+            currentTrack.enabled = !effectivelyMuted;
           }
+
+          const threshold = sensitivityThresholdRef.current;
+          const speakingNow = !effectivelyMuted && levelPercent > threshold;
+
+          setIsSpeaking(prev => {
+            if (prev !== speakingNow && socket) {
+              socket.emit('update_voice_state', { isSpeaking: speakingNow });
+            }
+            return speakingNow;
+          });
 
           animationFrameRef.current = requestAnimationFrame(checkAudioLevel);
         };

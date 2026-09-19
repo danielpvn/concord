@@ -126,6 +126,11 @@ export const updateProfile = async (req, res) => {
   try {
     const { avatarColor, avatarUrl, username } = req.body;
 
+    // Aceita só links curtos (arquivos do próprio servidor ou http/https), nunca imagens embutidas em base64
+    if (avatarUrl !== undefined && avatarUrl !== null && (typeof avatarUrl !== 'string' || avatarUrl.length > 2048 || !/^(\/api\/files\/|\/uploads\/|https?:\/\/)/.test(avatarUrl))) {
+      return res.status(400).json({ error: 'Imagem de avatar inválida' });
+    }
+
     let cleanUsername = undefined;
     if (username !== undefined && username !== null) {
       cleanUsername = username.trim();

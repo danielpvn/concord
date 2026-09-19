@@ -4,7 +4,9 @@ import { useVoice } from '../../context/VoiceContext';
 import { useSocket } from '../../context/SocketContext';
 import { Avatar } from '../ui/Avatar';
 import { ImageCropperModal } from '../ui/ImageCropperModal';
-import { getAuthToken, apiFetch, API_BASE, getFullMediaUrl } from '../../services/api';
+import { getAuthToken, apiFetch, API_BASE, SERVER_BASE_URL, getFullMediaUrl } from '../../services/api';
+import { supportsOutputSelection } from '../../context/VoiceContext';
+import { areSoundsEnabled, setSoundsEnabled, getSoundsVolume, setSoundsVolume, playSound } from '../../services/sounds';
 import {
   X,
   Mic,
@@ -21,7 +23,9 @@ import {
   KeyRound,
   AlertCircle,
   User,
-  Sparkles
+  Sparkles,
+  Headphones,
+  Bell
 } from 'lucide-react';
 
 const AVATAR_COLORS = [
@@ -46,7 +50,13 @@ export const SettingsModal = ({ isOpen, onClose }) => {
     aiNoiseActive,
     updateAiNoiseSuppression,
     voiceGate,
-    updateVoiceGate
+    updateVoiceGate,
+    audioDevices,
+    inputDeviceId,
+    outputDeviceId,
+    changeInputDevice,
+    changeOutputDevice,
+    refreshDevices
   } = useVoice();
   const { broadcastProfileUpdate } = useSocket();
 
@@ -56,6 +66,11 @@ export const SettingsModal = ({ isOpen, onClose }) => {
   const [isUploading, setIsUploading] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [avatarSourceTab, setAvatarSourceTab] = useState('upload'); // 'upload' | 'link'
+  const [avatarError, setAvatarError] = useState(null);
+
+  // Sons de notificação
+  const [soundsOn, setSoundsOn] = useState(areSoundsEnabled);
+  const [soundsVolume, setSoundsVolumeState] = useState(getSoundsVolume);
 
   // Troca de Apelido / Nome de Jogador
   const [usernameInput, setUsernameInput] = useState(user?.username || '');
@@ -82,6 +97,13 @@ export const SettingsModal = ({ isOpen, onClose }) => {
       setUsernameInput(user.username || '');
     }
   }, [user, isOpen]);
+
+  useEffect(() => {
+    if (isOpen) {
+      refreshDevices();
+      setAvatarError(null);
+    }
+  }, [isOpen, refreshDevices]);
 
   if (!isOpen) return null;
 
@@ -125,6 +147,13 @@ export const SettingsModal = ({ isOpen, onClose }) => {
   const handleAvatarFileSelected = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setAvatarError(null);
+
+    if (!file.type.startsWith('image/')) {
+      setAvatarError('Escolha um arquivo de imagem (PNG, JPG, WEBP ou GIF).');
+      e.target.value = '';
+      return;
+    }
 
     const reader = new FileReader();
     reader.onload = () => {
@@ -136,12 +165,39 @@ export const SettingsModal = ({ isOpen, onClose }) => {
     e.target.value = '';
   };
 
+  const loadImageForCrop = async (src) => {
+    if (!src) return;
+    setAvatarError(null);
+    const isLocal = src.startsWith('data:') || src.startsWith('blob:') || src.startsWith(SERVER_BASE_URL);
+    if (isLocal) {
+      setTempImageToCrop(src);
+      setCropperOpen(true);
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const res = await fetch(`${API_BASE}/image-proxy?url=${encodeURIComponent(src)}`, {
+        headers: { Authorization: `Bearer ${getAuthToken()}` }
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Não foi possível carregar essa imagem');
+      }
+      const blob = await res.blob();
+      setTempImageToCrop(URL.createObjectURL(blob));
+      setCropperOpen(true);
+    } catch (err) {
+      setAvatarError(err.message || 'Não foi possível carregar essa imagem');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   const handleWebLinkSubmit = (e) => {
     e.preventDefault();
     if (!webLinkInput.trim()) return;
-
-    setTempImageToCrop(webLinkInput.trim());
-    setCropperOpen(true);
+    loadImageForCrop(webLinkInput.trim());
   };
 
   const handleCropComplete = async (croppedBlob, croppedDataUrl) => {
@@ -161,23 +217,20 @@ export const SettingsModal = ({ isOpen, onClose }) => {
         body: formData
       });
 
-      const data = await res.json();
-      if (res.ok && data.avatarUrl) {
-        setAvatarUrl(data.avatarUrl);
-        const updated = await updateProfile({ avatarUrl: data.avatarUrl, avatarColor: selectedColor });
-        broadcastProfileUpdate({ username: updated.username, avatarColor: selectedColor, avatarUrl: data.avatarUrl });
-        setSaveSuccess(true);
-        setWebLinkInput('');
-        setTimeout(() => setSaveSuccess(false), 2000);
-      } else {
-        setAvatarUrl(croppedDataUrl);
-        const updated = await updateProfile({ avatarUrl: croppedDataUrl, avatarColor: selectedColor });
-        broadcastProfileUpdate({ username: updated.username, avatarColor: selectedColor, avatarUrl: croppedDataUrl });
-        setSaveSuccess(true);
-        setTimeout(() => setSaveSuccess(false), 2000);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.avatarUrl) {
+        throw new Error(data.error || 'Não foi possível enviar a imagem');
       }
+
+      setAvatarUrl(data.avatarUrl);
+      const updated = await updateProfile({ avatarUrl: data.avatarUrl, avatarColor: selectedColor });
+      broadcastProfileUpdate({ username: updated.username, avatarColor: selectedColor, avatarUrl: data.avatarUrl });
+      setSaveSuccess(true);
+      setWebLinkInput('');
+      setTimeout(() => setSaveSuccess(false), 2000);
     } catch (err) {
       console.error('Erro ao salvar avatar cortado:', err);
+      setAvatarError(err.message || 'Erro ao salvar a foto');
     } finally {
       setIsUploading(false);
     }
@@ -319,8 +372,7 @@ export const SettingsModal = ({ isOpen, onClose }) => {
                         <button
                           type="button"
                           onClick={() => {
-                            setTempImageToCrop(getFullMediaUrl(avatarUrl));
-                            setCropperOpen(true);
+                            loadImageForCrop(getFullMediaUrl(avatarUrl));
                           }}
                           className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1 hover:underline font-medium"
                         >
@@ -391,6 +443,13 @@ export const SettingsModal = ({ isOpen, onClose }) => {
                       <span>{isUploading ? 'Processando...' : 'Escolher Imagem no PC'}</span>
                     </button>
                     <p className="text-[10px] text-slate-500 mt-1.5 text-center">PNG, JPG, WEBP ou GIF (com ajuste de zoom e corte)</p>
+                  </div>
+                )}
+
+                {avatarError && (
+                  <div className="mb-2 flex items-start gap-2 px-3 py-2 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-xs">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                    <span>{avatarError}</span>
                   </div>
                 )}
 
@@ -521,6 +580,99 @@ export const SettingsModal = ({ isOpen, onClose }) => {
                     className="w-full h-1.5 bg-gaming-700 rounded-lg appearance-none cursor-pointer accent-gaming-accent"
                   />
                 </div>
+              </div>
+            </div>
+
+            {/* Dispositivos de Áudio */}
+            <div>
+              <h3 className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <Headphones className="w-4 h-4 text-sky-400" />
+                Dispositivos de Áudio
+              </h3>
+
+              <div className="space-y-3 bg-gaming-950 p-3.5 rounded-xl border border-gaming-800">
+                <label className="block">
+                  <span className="block text-[11px] text-slate-400 mb-1">Microfone (entrada)</span>
+                  <select
+                    value={inputDeviceId}
+                    onChange={(e) => changeInputDevice(e.target.value)}
+                    className="w-full px-3 py-2 bg-gaming-900 border border-gaming-700 rounded-xl text-xs text-white focus:outline-none focus:border-gaming-accent"
+                  >
+                    <option value="">Padrão do sistema</option>
+                    {audioDevices.inputs.map(d => (
+                      <option key={d.deviceId} value={d.deviceId}>{d.label}</option>
+                    ))}
+                  </select>
+                </label>
+
+                {supportsOutputSelection ? (
+                  <label className="block">
+                    <span className="block text-[11px] text-slate-400 mb-1">Fone / Caixa de som (saída)</span>
+                    <select
+                      value={outputDeviceId}
+                      onChange={(e) => changeOutputDevice(e.target.value)}
+                      className="w-full px-3 py-2 bg-gaming-900 border border-gaming-700 rounded-xl text-xs text-white focus:outline-none focus:border-gaming-accent"
+                    >
+                      <option value="">Padrão do sistema</option>
+                      {audioDevices.outputs.map(d => (
+                        <option key={d.deviceId} value={d.deviceId}>{d.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                ) : (
+                  <p className="text-[11px] text-slate-500">
+                    A saída de som é escolhida pelo sistema neste dispositivo (iPhone/Safari não permitem trocar pelo site).
+                  </p>
+                )}
+
+                {audioDevices.inputs.length === 0 && (
+                  <p className="text-[11px] text-slate-500">Entre em um canal de voz e permita o microfone para ver os nomes dos dispositivos.</p>
+                )}
+              </div>
+            </div>
+
+            {/* Sons de Notificação */}
+            <div>
+              <h3 className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <Bell className="w-4 h-4 text-amber-400" />
+                Sons de Notificação
+              </h3>
+
+              <div className="space-y-3 bg-gaming-950 p-3.5 rounded-xl border border-gaming-800">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={soundsOn}
+                    onChange={(e) => {
+                      setSoundsOn(e.target.checked);
+                      setSoundsEnabled(e.target.checked);
+                      if (e.target.checked) playSound('message');
+                    }}
+                    className="w-4 h-4 accent-indigo-500 flex-shrink-0"
+                  />
+                  <span className="text-sm md:text-xs text-white">Tocar sons ao entrar/sair, compartilhar tela e receber mensagens</span>
+                </label>
+
+                {soundsOn && (
+                  <div className="flex items-center gap-3">
+                    <span className="text-[11px] text-slate-400 flex-shrink-0">Volume</span>
+                    <input
+                      type="range"
+                      min="5"
+                      max="100"
+                      step="5"
+                      value={soundsVolume}
+                      onChange={(e) => {
+                        const value = parseInt(e.target.value, 10);
+                        setSoundsVolumeState(value);
+                        setSoundsVolume(value);
+                      }}
+                      onPointerUp={() => playSound('join')}
+                      className="w-full h-1.5 bg-gaming-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                    />
+                    <span className="text-[10px] font-mono text-slate-400 w-8 text-right">{soundsVolume}%</span>
+                  </div>
+                )}
               </div>
             </div>
 

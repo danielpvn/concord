@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { getFullMediaUrl } from '../../services/api';
 
 export const Avatar = ({
@@ -19,6 +19,11 @@ export const Avatar = ({
 
   const initial = username ? username.charAt(0).toUpperCase() : '?';
   const fullAvatarUrl = getFullMediaUrl(avatarUrl);
+  const [imageFailed, setImageFailed] = useState(false);
+
+  useEffect(() => {
+    setImageFailed(false);
+  }, [fullAvatarUrl]);
 
   return (
     <div
@@ -27,15 +32,14 @@ export const Avatar = ({
       } ${isSpeaking ? 'ring-2 ring-emerald-400 animate-pulse' : ''} ${className}`}
       style={{ backgroundColor: avatarColor }}
     >
-      {fullAvatarUrl ? (
+      {fullAvatarUrl && !imageFailed ? (
         <img
           src={fullAvatarUrl}
           alt={username}
           className="w-full h-full object-cover"
-          onError={(e) => {
-            // Se a imagem falhar, exibe a letra inicial
-            e.currentTarget.style.display = 'none';
-          }}
+          draggable={false}
+          // Se a imagem falhar (link quebrado), mostra a letra inicial
+          onError={() => setImageFailed(true)}
         />
       ) : (
         <span>{initial}</span>

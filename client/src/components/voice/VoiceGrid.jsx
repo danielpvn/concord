@@ -71,6 +71,14 @@ const MobileHeader = ({ onOpenMenu, label, count }) => (
 // Uma transmissão de tela (minha ou de um amigo)
 const ScreenTile = ({ screen, muted, compact = false, onSelect, onShowAll, className = '' }) => {
   const videoRef = useRef(null);
+  const { outputDeviceId } = useVoice();
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (video && typeof video.setSinkId === 'function') {
+      video.setSinkId(outputDeviceId || '').catch(() => {});
+    }
+  }, [outputDeviceId]);
 
   useEffect(() => {
     const video = videoRef.current;

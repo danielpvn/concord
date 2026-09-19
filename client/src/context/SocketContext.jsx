@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { io } from 'socket.io-client';
 import { useAuth } from './AuthContext';
-import { apiFetch, SERVER_BASE_URL } from '../services/api';
+import { apiFetch, SERVER_BASE_URL, getAuthToken } from '../services/api';
+import { playSound } from '../services/sounds';
 
 const SocketContext = createContext(null);
 
@@ -46,15 +47,24 @@ export const SocketProvider = ({ children }) => {
   }, []);
 
   const activeChannelIdRef = useRef(activeChannelId);
+  const isChatOpenRef = useRef(isChatOpen);
+  const userIdRef = useRef(user?.id);
 
   useEffect(() => {
     activeChannelIdRef.current = activeChannelId;
   }, [activeChannelId]);
 
-  // Conexão com Socket.io
   useEffect(() => {
-    if (!user) {
-      if (socket) socket.disconnect();
+    isChatOpenRef.current = isChatOpen;
+  }, [isChatOpen]);
+
+  useEffect(() => {
+    userIdRef.current = user?.id;
+  }, [user?.id]);
+
+  // Conexão com Socket.io (só reconecta ao trocar de conta, não ao editar o perfil)
+  useEffect(() => {
+    if (!user?.id) {
       setSocket(null);
       return;
     }
@@ -68,7 +78,7 @@ export const SocketProvider = ({ children }) => {
     newSocket.on('connect', () => {
       console.log('⚡ Conectado ao servidor Concord WebSocket');
       newSocket.emit('join_server', {
-        userId: user.id,
+        token: getAuthToken(),
         channelId: activeChannelIdRef.current
       });
       if (activeChannelIdRef.current) {
@@ -103,9 +113,25 @@ export const SocketProvider = ({ children }) => {
         };
       });
 
-      if (!isChatOpen) {
-        setUnreadChatCount(prev => prev + 1);
+      const fromSomeoneElse = message.userId !== userIdRef.current;
+      if (fromSomeoneElse) {
+        playSound('message');
+        if (!isChatOpenRef.current) {
+          setUnreadChatCount(prev => prev + 1);
+        }
       }
+    });
+
+    newSocket.on('message_deleted', ({ messageId, channelId }) => {
+      setMessages(prev => {
+        const channelMsgs = prev[channelId];
+        if (!channelMsgs) return prev;
+        return { ...prev, [channelId]: channelMsgs.filter(m => m.id !== messageId) };
+      });
+    });
+
+    newSocket.on('error_message', (text) => {
+      if (typeof text === 'string') alert(text);
     });
 
     // Moderação recebida: você foi mutado pelo servidor
@@ -130,7 +156,7 @@ export const SocketProvider = ({ children }) => {
     return () => {
       newSocket.disconnect();
     };
-  }, [user]);
+  }, [user?.id]);
 
   // Sincroniza mensagens ao trocar de canal
   useEffect(() => {
@@ -186,6 +212,12 @@ export const SocketProvider = ({ children }) => {
     }
   };
 
+  const deleteMessage = (messageId) => {
+    if (socket) {
+      socket.emit('delete_message', { messageId });
+    }
+  };
+
   const broadcastProfileUpdate = (profileData) => {
     if (socket) {
       socket.emit('update_profile_broadcast', profileData);
@@ -212,6 +244,7 @@ export const SocketProvider = ({ children }) => {
         joinChannel,
         leaveChannel,
         sendMessage,
+        deleteMessage,
         adminMoveUser,
         adminServerMute,
         adminKickVoice,

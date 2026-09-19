@@ -11,12 +11,13 @@ import {
   Crown,
   Shield,
   UploadCloud,
-  ExternalLink
+  ExternalLink,
+  Trash2
 } from 'lucide-react';
 
 export const ChatDrawer = () => {
-  const { messages, activeChannel, sendMessage, isChatOpen, setIsChatOpen, setUnreadChatCount } = useSocket();
-  const { user } = useAuth();
+  const { messages, activeChannel, sendMessage, deleteMessage, isChatOpen, setIsChatOpen, setUnreadChatCount } = useSocket();
+  const { user, isAdmin } = useAuth();
   const [inputText, setInputText] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
@@ -48,6 +49,7 @@ export const ChatDrawer = () => {
       sendMessage(activeChannel.id, '', data.url, data.type);
     } catch (err) {
       console.error('Erro ao enviar imagem/arquivo:', err);
+      alert(err.message || 'Erro ao enviar o arquivo.');
     } finally {
       setIsUploading(false);
     }
@@ -69,6 +71,15 @@ export const ChatDrawer = () => {
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const file = e.dataTransfer.files[0];
       await handleFileUpload(file);
+    }
+  };
+
+  const handleDeleteMessage = (msg) => {
+    const preview = msg.content
+      ? `"${msg.content.slice(0, 60)}${msg.content.length > 60 ? '…' : ''}"`
+      : 'este anexo';
+    if (window.confirm(`Excluir a mensagem ${preview}?`)) {
+      deleteMessage(msg.id);
     }
   };
 
@@ -143,6 +154,16 @@ export const ChatDrawer = () => {
                     {msg.user?.role === 'OWNER' && <Crown className="w-3 h-3 text-amber-400" />}
                     {msg.user?.role === 'ADMIN' && <Shield className="w-3 h-3 text-indigo-400" />}
                     <span className="text-[9px] text-slate-500 font-mono ml-auto">{timeFormatted}</span>
+                    {(isAdmin || msg.userId === user?.id) && (
+                      <button
+                        onClick={() => handleDeleteMessage(msg)}
+                        title="Excluir mensagem"
+                        aria-label="Excluir mensagem"
+                        className="p-1 -my-1 rounded-md text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition md:opacity-0 md:group-hover:opacity-100 focus:opacity-100"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </div>
 
                   {msg.content && !isImageLink && (

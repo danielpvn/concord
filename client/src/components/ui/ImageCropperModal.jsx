@@ -55,7 +55,7 @@ export const ImageCropperModal = ({ isOpen, imageSrc, onCropComplete, onCancel }
 
   const handleSaveCrop = () => {
     const img = imageRef.current;
-    if (!img) return;
+    if (!img || !imageLoaded) return;
 
     const CROP_SIZE = 256;
     const canvas = document.createElement('canvas');
@@ -90,11 +90,17 @@ export const ImageCropperModal = ({ isOpen, imageSrc, onCropComplete, onCancel }
     ctx.drawImage(img, destX, destY, destWidth, destHeight);
     ctx.restore();
 
-    canvas.toBlob((blob) => {
-      if (blob) {
-        onCropComplete(blob, canvas.toDataURL('image/webp', 0.95));
-      }
-    }, 'image/webp', 0.95);
+    try {
+      // Safari não gera WEBP: se vier PNG, o servidor também aceita
+      canvas.toBlob((blob) => {
+        if (blob) {
+          onCropComplete(blob);
+        }
+      }, 'image/webp', 0.92);
+    } catch (err) {
+      console.error('Erro ao recortar imagem:', err);
+      alert('Não foi possível usar essa imagem. Baixe-a e envie pelo botão "Escolher Imagem".');
+    }
   };
 
   return (
@@ -122,10 +128,15 @@ export const ImageCropperModal = ({ isOpen, imageSrc, onCropComplete, onCancel }
         <div className="mt-4 flex flex-col items-center justify-center">
           <div
             ref={containerRef}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onMouseLeave={handleMouseUp}
+            // Pointer events: funciona com mouse e com o dedo no celular
+            onPointerDown={(e) => {
+              e.currentTarget.setPointerCapture?.(e.pointerId);
+              handleMouseDown(e);
+            }}
+            onPointerMove={handleMouseMove}
+            onPointerUp={handleMouseUp}
+            onPointerCancel={handleMouseUp}
+            style={{ touchAction: 'none' }}
             onWheel={handleWheel}
             className="relative w-60 h-60 rounded-full border-4 border-indigo-500 shadow-2xl overflow-hidden cursor-grab active:cursor-grabbing bg-gaming-950 flex items-center justify-center select-none"
             title="Arraste para reposicionar ou use a roda do mouse para zoom"

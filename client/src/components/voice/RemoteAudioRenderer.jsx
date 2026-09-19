@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { useVoice } from '../../context/VoiceContext';
 import { useSocket } from '../../context/SocketContext';
 
-const RemoteAudioTrack = ({ socketId, stream, userVolumes, isDeafened, onlineUsers }) => {
+const RemoteAudioTrack = ({ socketId, stream, userVolumes, isDeafened, onlineUsers, outputDeviceId }) => {
   const audioRef = useRef(null);
 
   const remoteUser = onlineUsers?.find(u => u.socketId === socketId);
@@ -63,6 +63,14 @@ const RemoteAudioTrack = ({ socketId, stream, userVolumes, isDeafened, onlineUse
     }
   }, [normalizedVolume, shouldMute]);
 
+  // Dispositivo de saída escolhido nas configurações (Chrome/Edge/Electron)
+  useEffect(() => {
+    const audioEl = audioRef.current;
+    if (audioEl && typeof audioEl.setSinkId === 'function') {
+      audioEl.setSinkId(outputDeviceId || '').catch(err => console.warn('[Áudio] Falha ao trocar saída:', err));
+    }
+  }, [outputDeviceId]);
+
   return (
     <audio
       ref={audioRef}
@@ -75,7 +83,7 @@ const RemoteAudioTrack = ({ socketId, stream, userVolumes, isDeafened, onlineUse
 };
 
 export const RemoteAudioRenderer = () => {
-  const { remoteStreams, userVolumes, isDeafened } = useVoice();
+  const { remoteStreams, userVolumes, isDeafened, outputDeviceId } = useVoice();
   const { onlineUsers } = useSocket();
 
   const entries = Object.entries(remoteStreams || {});
@@ -91,6 +99,7 @@ export const RemoteAudioRenderer = () => {
           userVolumes={userVolumes}
           isDeafened={isDeafened}
           onlineUsers={onlineUsers}
+          outputDeviceId={outputDeviceId}
         />
       ))}
     </div>

@@ -6,6 +6,8 @@ import { upload, handleFileUpload, handleAvatarUpload, serveFile } from '../cont
 import { generateLiveKitToken } from '../services/livekitService.js';
 import { getIceServers, hasTurnConfigured } from '../services/iceService.js';
 import { requireAuth, requireAdmin, requireOwner } from '../middleware/auth.js';
+import { fetchRemoteImage } from '../services/imageProxyService.js';
+import multer from 'multer';
 
 const router = Router();
 
@@ -21,6 +23,19 @@ router.post('/auth/avatar', requireAuth, upload.single('avatar'), handleAvatarUp
 
 // Arquivos enviados (avatares e anexos do chat), guardados no banco
 router.get('/files/:id', serveFile);
+
+// Busca imagem de um link da web pelo servidor (evita bloqueio de CORS no recorte do avatar)
+router.get('/image-proxy', requireAuth, async (req, res) => {
+  try {
+    const { buffer, contentType } = await fetchRemoteImage(String(req.query.url || ''));
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Disposition', 'inline');
+    return res.send(buffer);
+  } catch (err) {
+    return res.status(400).json({ error: err.name === 'TimeoutError' ? 'O site demorou demais para responder' : err.message });
+  }
+});
 
 // --- Rota de Verificação de Versão (Auto-Update) ---
 router.get('/version', (req, res) => {
@@ -75,6 +90,15 @@ router.post('/livekit/token', requireAuth, async (req, res) => {
     console.error('Erro ao gerar token LiveKit:', err);
     return res.status(500).json({ error: 'Erro ao gerar token' });
   }
+});
+
+// Erros de upload (ex.: arquivo grande demais) em JSON, para o site mostrar a mensagem
+router.use((err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    const message = err.code === 'LIMIT_FILE_SIZE' ? 'Arquivo muito grande (máximo 10MB)' : 'Erro no envio do arquivo';
+    return res.status(413).json({ error: message });
+  }
+  return next(err);
 });
 
 export default router;

@@ -69,7 +69,7 @@ export const deleteChannel = async (req, res) => {
 export const getChannelMessages = async (req, res) => {
   try {
     const { id } = req.params;
-    const limit = parseInt(req.query.limit) || 100;
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 100, 1), 200);
 
     const messages = await prisma.message.findMany({
       where: { channelId: id },
@@ -84,11 +84,12 @@ export const getChannelMessages = async (req, res) => {
           }
         }
       },
-      orderBy: { createdAt: 'asc' },
+      // Busca as mais recentes e devolve em ordem cronológica
+      orderBy: { createdAt: 'desc' },
       take: limit
     });
 
-    return res.json({ messages });
+    return res.json({ messages: messages.reverse() });
   } catch (err) {
     console.error('Erro ao buscar mensagens:', err);
     return res.status(500).json({ error: 'Erro ao buscar mensagens' });

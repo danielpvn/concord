@@ -3,6 +3,21 @@ import { useAuth } from './AuthContext';
 import { useSocket } from './SocketContext';
 import { apiFetch } from '../services/api';
 import { createMicProcessor } from '../services/micProcessor';
+import { playSound, setSoundsOutputDevice } from '../services/sounds';
+
+const MIC_CONSTRAINTS = {
+  echoCancellation: true,
+  noiseSuppression: true,
+  autoGainControl: true,
+  googEchoCancellation: true,
+  googAutoGainControl: true,
+  googNoiseSuppression: true,
+  googHighpassFilter: true,
+  channelCount: 1
+};
+
+export const supportsOutputSelection =
+  typeof HTMLMediaElement !== 'undefined' && 'setSinkId' in HTMLMediaElement.prototype;
 
 const VoiceContext = createContext(null);
 
@@ -34,6 +49,10 @@ export const VoiceProvider = ({ children }) => {
   const [aiNoiseSuppression, setAiNoiseSuppression] = useState(() => localStorage.getItem('concord_ai_noise_suppression') !== '0');
   const [aiNoiseActive, setAiNoiseActive] = useState(false);
   const [voiceGate, setVoiceGate] = useState(() => localStorage.getItem('concord_voice_gate') === '1');
+  // Dispositivos de entrada (microfone) e saída (fone/caixa de som)
+  const [inputDeviceId, setInputDeviceId] = useState(() => localStorage.getItem('concord_input_device') || '');
+  const [outputDeviceId, setOutputDeviceId] = useState(() => localStorage.getItem('concord_output_device') || '');
+  const [audioDevices, setAudioDevices] = useState({ inputs: [], outputs: [] });
   const [sensitivityThreshold, setSensitivityThreshold] = useState(() => {
     return parseInt(localStorage.getItem('concord_voice_sensitivity') || '25', 10);
   });
@@ -59,6 +78,7 @@ export const VoiceProvider = ({ children }) => {
   const processorBuildRef = useRef(0);
   const aiNoiseSuppressionRef = useRef(aiNoiseSuppression);
   const voiceGateRef = useRef(voiceGate);
+  const inputDeviceIdRef = useRef(inputDeviceId);
   const micPromiseRef = useRef(null);
   const screenStreamRef = useRef(null);
   const audioContextRef = useRef(null);
@@ -433,6 +453,77 @@ export const VoiceProvider = ({ children }) => {
     previous?.destroy();
   };
 
+  const getMicStream = async () => {
+    const deviceId = inputDeviceIdRef.current;
+    try {
+      return await navigator.mediaDevices.getUserMedia({
+        audio: { ...MIC_CONSTRAINTS, ...(deviceId ? { deviceId: { exact: deviceId } } : {}) },
+        video: false
+      });
+    } catch (err) {
+      if (deviceId && (err.name === 'OverconstrainedError' || err.name === 'NotFoundError')) {
+        console.warn('[Áudio] Microfone escolhido não encontrado, usando o padrão.');
+        return navigator.mediaDevices.getUserMedia({ audio: MIC_CONSTRAINTS, video: false });
+      }
+      throw err;
+    }
+  };
+
+  const refreshDevices = useCallback(async () => {
+    if (!navigator.mediaDevices?.enumerateDevices) return;
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const toOption = (d, i, fallback) => ({ deviceId: d.deviceId, label: d.label || `${fallback} ${i + 1}` });
+      setAudioDevices({
+        inputs: devices.filter(d => d.kind === 'audioinput' && d.deviceId !== 'default' && d.deviceId !== 'communications').map((d, i) => toOption(d, i, 'Microfone')),
+        outputs: devices.filter(d => d.kind === 'audiooutput' && d.deviceId !== 'default' && d.deviceId !== 'communications').map((d, i) => toOption(d, i, 'Saída'))
+      });
+    } catch (e) {}
+  }, []);
+
+  useEffect(() => {
+    refreshDevices();
+    navigator.mediaDevices?.addEventListener?.('devicechange', refreshDevices);
+    return () => navigator.mediaDevices?.removeEventListener?.('devicechange', refreshDevices);
+  }, [refreshDevices]);
+
+  useEffect(() => {
+    setSoundsOutputDevice(outputDeviceId);
+  }, [outputDeviceId]);
+
+  const changeInputDevice = async (deviceId) => {
+    setInputDeviceId(deviceId);
+    inputDeviceIdRef.current = deviceId;
+    localStorage.setItem('concord_input_device', deviceId);
+
+    const old = rawMicStreamRef.current;
+    if (!old) return; // aplica na próxima vez que entrar na voz
+
+    try {
+      const stream = await getMicStream();
+      if (rawMicStreamRef.current !== old) {
+        stream.getTracks().forEach(t => t.stop());
+        return;
+      }
+      rawMicStreamRef.current = stream;
+      processorBuildRef.current++;
+      processorRef.current?.destroy();
+      processorRef.current = null;
+      refreshOutgoingAudio(); // já envia o novo microfone
+      await buildProcessor(); // e troca pela versão sem ruído
+      old.getTracks().forEach(t => t.stop());
+      setMicError(null);
+    } catch (err) {
+      console.warn('[Áudio] Falha ao trocar microfone:', err);
+      setMicError('Não foi possível usar o microfone escolhido.');
+    }
+  };
+
+  const changeOutputDevice = (deviceId) => {
+    setOutputDeviceId(deviceId);
+    localStorage.setItem('concord_output_device', deviceId);
+  };
+
   const initMicrophone = useCallback(async () => {
     if (rawMicStreamRef.current && rawMicStreamRef.current.active) {
       return localStreamRef.current;
@@ -446,19 +537,7 @@ export const VoiceProvider = ({ children }) => {
 
     micPromiseRef.current = (async () => {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-            googEchoCancellation: true,
-            googAutoGainControl: true,
-            googNoiseSuppression: true,
-            googHighpassFilter: true,
-            channelCount: 1
-          },
-          video: false
-        });
+        const stream = await getMicStream();
 
         // Saiu da sala enquanto o navegador pedia permissão
         if (!inVoiceRef.current) {
@@ -468,6 +547,7 @@ export const VoiceProvider = ({ children }) => {
 
         rawMicStreamRef.current = stream;
         setMicError(null);
+        refreshDevices();
         // Já envia o microfone direto; troca pela versão sem ruído assim que ela estiver pronta
         refreshOutgoingAudio();
         await buildProcessor();
@@ -620,16 +700,19 @@ export const VoiceProvider = ({ children }) => {
     const onUserJoined = ({ socketId }) => {
       if (!inVoiceRef.current || !socketId || socketId === socket.id) return;
       console.log(`👤 Amigo entrou na sala de voz: ${socketId}`);
+      playSound('join');
       connectAudioPeer(socketId);
       if (screenStreamRef.current) connectScreenPeer(socketId);
     };
 
     const onUserLeft = ({ socketId }) => {
       console.log(`🚪 Amigo saiu da sala de voz: ${socketId}`);
+      if (inVoiceRef.current) playSound('leave');
       ['audio', 'screen', 'screen-view'].forEach(type => closePeer(type, socketId));
     };
 
     const onScreenStateChanged = ({ socketId, isScreenSharing: sharing }) => {
+      if (inVoiceRef.current) playSound(sharing ? 'screenStart' : 'screenStop');
       if (!sharing) closePeer('screen-view', socketId);
     };
 
@@ -654,9 +737,11 @@ export const VoiceProvider = ({ children }) => {
   // Ao entrar em um canal de voz: liga o microfone. Ao sair/trocar: encerra tudo.
   useEffect(() => {
     if (inVoice) {
+      playSound('join');
       initMicrophone();
     }
     return () => {
+      if (inVoice) playSound('leave');
       stopScreenShare();
       closeAllPeers();
       stopMicrophone();
@@ -681,7 +766,10 @@ export const VoiceProvider = ({ children }) => {
     };
   }, []);
 
-  const toggleMute = () => setIsMuted(prev => !prev);
+  const toggleMute = () => {
+    playSound(isMuted ? 'unmute' : 'mute');
+    setIsMuted(prev => !prev);
+  };
   const toggleDeafen = () => setIsDeafened(prev => !prev);
 
   const cleanupVoiceConnections = useCallback(() => {
@@ -702,6 +790,12 @@ export const VoiceProvider = ({ children }) => {
         updateAiNoiseSuppression,
         voiceGate,
         updateVoiceGate,
+        audioDevices,
+        inputDeviceId,
+        outputDeviceId,
+        changeInputDevice,
+        changeOutputDevice,
+        refreshDevices,
         sensitivityThreshold,
         updateSensitivity,
         userVolumes,

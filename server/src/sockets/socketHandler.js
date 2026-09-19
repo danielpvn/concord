@@ -1,4 +1,8 @@
+import jwt from 'jsonwebtoken';
 import prisma from '../prisma.js';
+
+const JWT_SECRET = process.env.JWT_SECRET || 'concord-secret-key-gaming-friends-2026';
+const MAX_MESSAGE_LENGTH = 2000;
 
 // Mapa de usuários conectados: socketId -> Dados do usuário
 const connectedUsers = new Map();
@@ -15,16 +19,33 @@ const voiceJoinPayload = (socketId, user) => ({
   isScreenSharing: user.isScreenSharing
 });
 
+// Cargo sempre lido do banco: promoções/rebaixamentos valem na hora, sem reconectar
+const getFreshRole = async (userId) => {
+  const dbUser = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+  return dbUser?.role || null;
+};
+
+const isModeratorRole = (role) => role === 'OWNER' || role === 'ADMIN';
+
 export const setupSocketHandlers = (io) => {
   io.on('connection', (socket) => {
     console.log(`🔌 Novo cliente conectado: ${socket.id}`);
 
     // --- Usuário entra no servidor e sincroniza estado ---
     socket.on('join_server', async (userData) => {
-      if (!userData || !userData.userId) return;
+      if (!userData || !userData.token) return;
+
+      // A identidade vem do token JWT, nunca de um userId enviado pelo cliente
+      let userId;
+      try {
+        userId = jwt.verify(userData.token, JWT_SECRET).userId;
+      } catch (err) {
+        socket.emit('error_message', 'Sessão expirada. Faça login novamente.');
+        return;
+      }
 
       const userFromDb = await prisma.user.findUnique({
-        where: { id: userData.userId },
+        where: { id: userId },
         select: {
           id: true,
           username: true,
@@ -176,9 +197,12 @@ export const setupSocketHandlers = (io) => {
     });
 
     // --- Envio de Mensagem de Texto no Chat ---
-    socket.on('send_message', async ({ channelId, content, attachmentUrl, attachmentType }) => {
+    socket.on('send_message', async ({ channelId, content, attachmentUrl, attachmentType } = {}) => {
       const user = connectedUsers.get(socket.id);
-      if (!user || (!content && !attachmentUrl)) return;
+      if (!user || !channelId || (!content && !attachmentUrl)) return;
+      if (typeof content === 'string' && content.length > MAX_MESSAGE_LENGTH) {
+        return socket.emit('error_message', `Mensagem muito longa (máximo ${MAX_MESSAGE_LENGTH} caracteres).`);
+      }
 
       try {
         const message = await prisma.message.create({
@@ -208,10 +232,38 @@ export const setupSocketHandlers = (io) => {
       }
     });
 
-    // --- Moderação: Arrastar e Soltar Usuário para outro Canal (Drag & Drop) ---
-    socket.on('admin_drag_move_user', ({ targetUserId, targetChannelId }) => {
+    // --- Excluir mensagem (Dono/Admin, ou o próprio autor) ---
+    socket.on('delete_message', async ({ messageId } = {}) => {
       const actor = connectedUsers.get(socket.id);
-      if (!actor || (actor.role !== 'OWNER' && actor.role !== 'ADMIN')) {
+      if (!actor || !messageId) return;
+
+      try {
+        const message = await prisma.message.findUnique({ where: { id: messageId } });
+        if (!message) return;
+
+        const role = await getFreshRole(actor.userId);
+        if (message.userId !== actor.userId && !isModeratorRole(role)) {
+          return socket.emit('error_message', 'Você não tem permissão para excluir esta mensagem.');
+        }
+
+        await prisma.message.delete({ where: { id: messageId } });
+
+        // Remove também o anexo guardado no banco
+        const fileMatch = message.attachmentUrl?.match(/^\/api\/files\/([\w-]+)$/);
+        if (fileMatch) {
+          await prisma.upload.deleteMany({ where: { id: fileMatch[1] } });
+        }
+
+        io.emit('message_deleted', { messageId, channelId: message.channelId });
+      } catch (err) {
+        console.error('Erro ao excluir mensagem:', err);
+      }
+    });
+
+    // --- Moderação: Arrastar e Soltar Usuário para outro Canal (Drag & Drop) ---
+    socket.on('admin_drag_move_user', async ({ targetUserId, targetChannelId }) => {
+      const actor = connectedUsers.get(socket.id);
+      if (!actor || !isModeratorRole(await getFreshRole(actor.userId))) {
         return socket.emit('error_message', 'Você não tem permissão para mover usuários.');
       }
 
@@ -227,7 +279,7 @@ export const setupSocketHandlers = (io) => {
     // --- Moderação: Mute de Servidor (Server Mute) ---
     socket.on('admin_server_mute', async ({ targetUserId, mute }) => {
       const actor = connectedUsers.get(socket.id);
-      if (!actor || (actor.role !== 'OWNER' && actor.role !== 'ADMIN')) {
+      if (!actor || !isModeratorRole(await getFreshRole(actor.userId))) {
         return socket.emit('error_message', 'Você não tem permissão para mutar usuários.');
       }
 
@@ -252,9 +304,9 @@ export const setupSocketHandlers = (io) => {
     });
 
     // --- Moderação: Desconectar da Voz (Kick from voice) ---
-    socket.on('admin_kick_voice', ({ targetUserId }) => {
+    socket.on('admin_kick_voice', async ({ targetUserId }) => {
       const actor = connectedUsers.get(socket.id);
-      if (!actor || (actor.role !== 'OWNER' && actor.role !== 'ADMIN')) {
+      if (!actor || !isModeratorRole(await getFreshRole(actor.userId))) {
         return socket.emit('error_message', 'Você não tem permissão para desconectar usuários.');
       }
 

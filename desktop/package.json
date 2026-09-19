@@ -1,12 +1,12 @@
 {
   "name": "concord-desktop",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Concord - Hub Privado Gamer para Amigos",
   "main": "main.js",
   "type": "module",
   "scripts": {
     "start": "electron .",
-    "build:pack": "electron-packager . Concord --platform=win32 --arch=x64 --icon=icon.ico --out=dist --overwrite --ignore=\"(^/dist|^/dist-installer|^/installer.iss|^/build-installer.js)\"",
+    "build:pack": "electron-packager . Concord --platform=win32 --arch=x64 --icon=icon.ico --out=dist --overwrite --ignore=\"(^/dist|^/dist-installer|^/installer.iss|^/build-installer.js|^/ui/Concord-Setup.exe)\"",
     "build:installer": "node build-installer.js",
     "build:all": "npm run build:pack && npm run build:installer"
   },

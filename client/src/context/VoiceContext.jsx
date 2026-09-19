@@ -599,8 +599,13 @@ export const VoiceProvider = ({ children }) => {
       // Transmite para todos os amigos presentes no canal de voz
       roomPeersRef.current.forEach(socketId => connectScreenPeer(socketId));
     } catch (err) {
-      if (err.name !== 'NotAllowedError') {
-        console.warn('Compartilhamento de tela cancelado ou indisponível:', err);
+      console.warn('Compartilhamento de tela cancelado ou indisponível:', err);
+      const isDesktopApp = /Electron/i.test(navigator.userAgent);
+      if (isDesktopApp) {
+        // No app desktop não existe "cancelar": falha aqui indica instalação antiga sem suporte a captura
+        alert('Não foi possível capturar a tela. Seu aplicativo Concord para PC está desatualizado: baixe e instale a versão mais recente em ' + window.location.origin + '/Concord-Setup.exe');
+      } else if (err.name !== 'NotAllowedError' && err.name !== 'AbortError') {
+        alert(`Não foi possível compartilhar a tela (${err.name}).`);
       }
     }
   };

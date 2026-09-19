@@ -1,5 +1,5 @@
 #define MyAppName "Concord"
-#define MyAppVersion "1.0.1"
+#define MyAppVersion "1.0.2"
 #define MyAppPublisher "Concord Gaming"
 #define MyAppExeName "Concord.exe"
 
@@ -14,7 +14,7 @@ AllowNoIcons=yes
 OutputDir=dist-installer
 OutputBaseFilename=Concord-Setup
 SetupIconFile=icon.ico
-Compression=lzma
+Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
 PrivilegesRequired=lowest

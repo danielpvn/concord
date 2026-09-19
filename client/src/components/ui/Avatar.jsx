@@ -10,11 +10,12 @@ export const Avatar = ({
   className = ''
 }) => {
   const sizeClasses = {
-    xs: 'w-6 h-6 text-[10px] rounded-lg',
-    sm: 'w-8 h-8 text-xs rounded-xl',
-    md: 'w-10 h-10 text-sm rounded-xl',
-    lg: 'w-16 h-16 text-xl rounded-2xl',
-    xl: 'w-20 h-20 text-2xl rounded-2xl'
+    // Sempre redondo, igual ao recorte da foto
+    xs: 'w-6 h-6 text-[10px]',
+    sm: 'w-8 h-8 text-xs',
+    md: 'w-10 h-10 text-sm',
+    lg: 'w-16 h-16 text-xl',
+    xl: 'w-20 h-20 text-2xl'
   };
 
   const initial = username ? username.charAt(0).toUpperCase() : '?';
@@ -27,7 +28,7 @@ export const Avatar = ({
 
   return (
     <div
-      className={`relative flex items-center justify-center font-bold text-white shadow-md overflow-hidden flex-shrink-0 transition-all ${
+      className={`relative flex items-center justify-center rounded-full font-bold text-white shadow-md overflow-hidden flex-shrink-0 transition-all ${
         sizeClasses[size] || sizeClasses.md
       } ${isSpeaking ? 'ring-2 ring-emerald-400 animate-pulse' : ''} ${className}`}
       style={{ backgroundColor: avatarColor }}

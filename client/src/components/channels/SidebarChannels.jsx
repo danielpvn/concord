@@ -126,7 +126,15 @@ export const SidebarChannels = () => {
                     {usersInRoom.map(u => (
                       <div
                         key={u.socketId}
-                        className="flex items-center justify-between text-[11px] text-slate-300 py-0.5 px-1.5 rounded hover:bg-gaming-800/50"
+                        // Dono/Admin arrastam a pessoa para outro canal de voz direto pela barra
+                        draggable={isAdmin}
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData('text/plain', u.userId);
+                          e.dataTransfer.effectAllowed = 'move';
+                        }}
+                        onDragEnd={handleDragLeave}
+                        title={isAdmin ? `Arraste para mover ${u.username} de canal` : undefined}
+                        className={`flex items-center justify-between text-[11px] text-slate-300 py-0.5 px-1.5 rounded hover:bg-gaming-800/50 ${isAdmin ? 'cursor-grab active:cursor-grabbing' : ''}`}
                       >
                         <div className="flex items-center gap-1.5 truncate">
                           <Avatar

@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 
 export const VoiceGrid = () => {
-  const { onlineUsers, activeChannel, activeChannelId, adminServerMute, adminKickVoice, adminMoveUser, channels, setIsMobileMenuOpen } = useSocket();
+  const { socket, onlineUsers, activeChannel, activeChannelId, adminServerMute, adminKickVoice, adminMoveUser, channels, setIsMobileMenuOpen } = useSocket();
   const { user, isAdmin, isOwner } = useAuth();
   const {
     isSpeaking,

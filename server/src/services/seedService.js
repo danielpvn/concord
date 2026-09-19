@@ -25,25 +25,7 @@ export const seedDatabase = async () => {
     const defaultPassword = 'daniel123';
     const hashedPassword = await bcrypt.hash(defaultPassword, 10);
 
-    // 2. Verifica se outra pessoa assumiu o cargo de OWNER
-    const otherOwners = await prisma.user.findMany({
-      where: {
-        role: 'OWNER',
-        NOT: {
-          username: { in: ['Daniel', 'daniel'] }
-        }
-      }
-    });
-
-    // Se outra pessoa assumiu o cargo de OWNER, reseta todas as contas anteriores
-    if (otherOwners.length > 0) {
-      console.log('🧹 Outro usuário assumiu o OWNER indevidamente. Resetando todas as contas...');
-      await prisma.message.deleteMany({});
-      await prisma.user.deleteMany({});
-      console.log('✨ Todas as contas antigas foram removidas.');
-    }
-
-    // 3. Garante que a conta do Daniel exista como OWNER e com a senha padrão ativa
+    // 2. Garante que a conta do Daniel exista como OWNER
     const existingDaniel = await prisma.user.findFirst({
       where: {
         OR: [
@@ -65,18 +47,17 @@ export const seedDatabase = async () => {
       });
       console.log(`✅ Conta fixa do Dono criada com sucesso! Usuário: "${ownerUsername}"`);
     } else {
-      // Se Daniel já existia mas outra pessoa era owner, ou se o cargo não é OWNER, restaura
-      await prisma.user.update({
-        where: { id: existingDaniel.id },
-        data: {
-          role: 'OWNER',
-          password: hashedPassword // Garante que a senha seja daniel123 neste reset
-        }
-      });
-      console.log(`👑 Cargo de OWNER e senha redefinidos para o Dono (${existingDaniel.username}).`);
+      // Se Daniel já existe, apenas garante que o cargo seja OWNER
+      if (existingDaniel.role !== 'OWNER') {
+        await prisma.user.update({
+          where: { id: existingDaniel.id },
+          data: { role: 'OWNER' }
+        });
+        console.log(`👑 Cargo de OWNER garantido para o Dono (${existingDaniel.username}).`);
+      }
     }
 
-    // 4. Garante que NENHUM outro usuário tenha o cargo OWNER
+    // 3. Garante que qualquer outro usuário seja MEMBER (preservando todas as contas e senhas)
     await prisma.user.updateMany({
       where: {
         role: 'OWNER',
@@ -89,7 +70,7 @@ export const seedDatabase = async () => {
       }
     });
 
-    console.log('🌟 Verificação de banco de dados concluída.');
+    console.log('🌟 Verificação de banco de dados concluída (todas as contas preservadas).');
   } catch (err) {
     console.error('Erro ao executar seed do banco de dados:', err);
   }

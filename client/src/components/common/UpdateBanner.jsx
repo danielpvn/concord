@@ -47,23 +47,24 @@ export const UpdateBanner = () => {
   };
 
   return (
-    <div className="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 text-white px-4 py-2 flex items-center justify-between shadow-lg z-50 text-xs font-medium animate-slide-down">
+    <div className="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 text-white px-3 sm:px-4 py-2 flex items-center justify-between gap-2 shadow-lg z-50 text-xs font-medium">
       <div className="flex items-center gap-2">
         <span className="p-1 rounded-lg bg-white/20">
           <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-spin" />
         </span>
-        <span>
+        <span className="min-w-0 line-clamp-2 sm:line-clamp-none">
           <strong>Nova Versão {updateInfo?.version || 'Disponível'}!</strong> {updateInfo?.releaseNotes || 'Novas melhorias foram lançadas.'}
         </span>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-shrink-0">
         <button
           onClick={handleApplyUpdate}
           className="px-3 py-1 bg-white text-indigo-950 hover:bg-slate-100 font-bold rounded-lg transition flex items-center gap-1.5 shadow active:scale-95"
         >
           <RefreshCw className="w-3 h-3" />
-          <span>Atualizar Agora</span>
+          <span className="hidden xs:inline">Atualizar Agora</span>
+          <span className="xs:hidden">Atualizar</span>
         </button>
         <button
           onClick={() => setIsDismissed(true)}

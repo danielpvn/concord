@@ -59,7 +59,7 @@ export const AuthModal = () => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
-      <div className="w-full max-w-md bg-gaming-900 border border-gaming-700/60 rounded-2xl p-8 shadow-2xl relative overflow-hidden">
+      <div className="w-full max-w-md bg-gaming-900 border border-gaming-700/60 rounded-2xl p-5 sm:p-8 shadow-2xl relative overflow-y-auto max-h-[calc(100dvh-2rem)]">
         {/* Glow de fundo */}
         <div className="absolute -top-20 -right-20 w-48 h-48 bg-gaming-accent/20 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute -bottom-20 -left-20 w-48 h-48 bg-gaming-success/15 rounded-full blur-3xl pointer-events-none" />

@@ -3,6 +3,18 @@ import prisma from '../prisma.js';
 // Mapa de usuários conectados: socketId -> Dados do usuário
 const connectedUsers = new Map();
 
+const voiceJoinPayload = (socketId, user) => ({
+  socketId,
+  userId: user.userId,
+  username: user.username,
+  avatarColor: user.avatarColor,
+  role: user.role,
+  isMuted: user.isMuted,
+  isDeafened: user.isDeafened,
+  isServerMuted: user.isServerMuted,
+  isScreenSharing: user.isScreenSharing
+});
+
 export const setupSocketHandlers = (io) => {
   io.on('connection', (socket) => {
     console.log(`🔌 Novo cliente conectado: ${socket.id}`);
@@ -26,7 +38,9 @@ export const setupSocketHandlers = (io) => {
       if (!userFromDb) return;
 
       const existing = connectedUsers.get(socket.id);
-      const initialChannel = userData.channelId || existing?.channelId || null;
+      // join_channel pode chegar antes do join_server terminar (consulta assíncrona ao banco)
+      const initialChannel = socket.data.pendingChannelId || userData.channelId || existing?.channelId || null;
+      delete socket.data.pendingChannelId;
 
       connectedUsers.set(socket.id, {
         socketId: socket.id,
@@ -45,6 +59,8 @@ export const setupSocketHandlers = (io) => {
 
       if (initialChannel) {
         socket.join(`channel_${initialChannel}`);
+        // Os demais membros da sala iniciam a conexão WebRTC com este socket
+        socket.to(`channel_${initialChannel}`).emit('user_joined_voice', voiceJoinPayload(socket.id, connectedUsers.get(socket.id)));
       }
 
       // Transmite a lista de todos os usuários online atualizada
@@ -64,12 +80,24 @@ export const setupSocketHandlers = (io) => {
     });
 
     // --- Entrar em um canal (Voz ou Texto) ---
-    socket.on('join_channel', ({ channelId }) => {
+    socket.on('join_channel', ({ channelId } = {}) => {
       const user = connectedUsers.get(socket.id);
-      if (!user) return;
+      if (!user) {
+        socket.data.pendingChannelId = channelId;
+        return;
+      }
 
       const previousChannel = user.channelId;
+
+      // Já está neste canal: apenas garante a sala do socket, sem renegociar WebRTC
+      if (previousChannel === channelId) {
+        socket.join(`channel_${channelId}`);
+        return;
+      }
+
       user.channelId = channelId;
+      user.isScreenSharing = false;
+      user.isSpeaking = false;
 
       if (previousChannel && previousChannel !== channelId) {
         socket.leave(`channel_${previousChannel}`);
@@ -84,21 +112,12 @@ export const setupSocketHandlers = (io) => {
 
       // Notifica todos os usuários da atualização
       io.emit('online_users_updated', Array.from(connectedUsers.values()));
-      socket.to(`channel_${channelId}`).emit('user_joined_voice', {
-        socketId: socket.id,
-        userId: user.userId,
-        username: user.username,
-        avatarColor: user.avatarColor,
-        role: user.role,
-        isMuted: user.isMuted,
-        isDeafened: user.isDeafened,
-        isServerMuted: user.isServerMuted,
-        isScreenSharing: user.isScreenSharing
-      });
+      socket.to(`channel_${channelId}`).emit('user_joined_voice', voiceJoinPayload(socket.id, user));
     });
 
     // --- Sair do canal de voz ---
     socket.on('leave_channel', () => {
+      delete socket.data.pendingChannelId;
       const user = connectedUsers.get(socket.id);
       if (!user || !user.channelId) return;
 
@@ -248,11 +267,12 @@ export const setupSocketHandlers = (io) => {
     });
 
     // --- Sinalização WebRTC Nativa (Mesh P2P Audio/Screen) ---
-    socket.on('webrtc_signal', ({ toSocketId, signal, streamType }) => {
+    socket.on('webrtc_signal', ({ toSocketId, signal, streamType } = {}) => {
+      if (!toSocketId || !signal || !connectedUsers.has(toSocketId)) return;
       io.to(toSocketId).emit('webrtc_signal', {
         fromSocketId: socket.id,
         signal,
-        streamType // 'audio' ou 'screen'
+        streamType // 'audio' | 'screen' (sharer -> viewer) | 'screen-view' (viewer -> sharer)
       });
     });
 

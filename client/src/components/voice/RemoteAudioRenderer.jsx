@@ -9,12 +9,15 @@ const RemoteAudioTrack = ({ socketId, stream, userVolumes, isDeafened, onlineUse
   const rawVolume = remoteUser ? (userVolumes?.[remoteUser.userId] ?? 100) : 100;
   // Volume normalizado de 0.0 a 1.0 para o elemento HTMLAudioElement
   const normalizedVolume = isDeafened ? 0 : Math.min(1, Math.max(0, rawVolume / 100));
+  // No iOS, `volume` é somente leitura: usamos `muted` para ensurdecer / volume zero
+  const shouldMute = isDeafened || rawVolume <= 0;
 
   useEffect(() => {
     const audioEl = audioRef.current;
     if (!audioEl || !stream) return;
 
     audioEl.srcObject = stream;
+    audioEl.muted = shouldMute;
     try {
       audioEl.volume = normalizedVolume;
     } catch (e) {}
@@ -53,11 +56,12 @@ const RemoteAudioTrack = ({ socketId, stream, userVolumes, isDeafened, onlineUse
 
   useEffect(() => {
     if (audioRef.current) {
+      audioRef.current.muted = shouldMute;
       try {
         audioRef.current.volume = normalizedVolume;
       } catch (e) {}
     }
-  }, [normalizedVolume]);
+  }, [normalizedVolume, shouldMute]);
 
   return (
     <audio

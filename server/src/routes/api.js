@@ -4,6 +4,7 @@ import { getChannels, createChannel, deleteChannel, getChannelMessages } from '.
 import { getAllUsers, promoteToAdmin, demoteFromAdmin, toggleServerMute, resetUserPassword, deleteUser, resetAllMembers } from '../controllers/adminController.js';
 import { upload, handleFileUpload } from '../controllers/uploadController.js';
 import { generateLiveKitToken } from '../services/livekitService.js';
+import { getIceServers, hasTurnConfigured } from '../services/iceService.js';
 import { requireAuth, requireAdmin, requireOwner } from '../middleware/auth.js';
 
 const router = Router();
@@ -51,6 +52,12 @@ router.post('/admin/reset-all-members', requireAuth, requireOwner, resetAllMembe
 
 // --- Rota de Upload de Arquivos / Imagens para o Chat ---
 router.post('/upload', requireAuth, upload.single('file'), handleFileUpload);
+
+// --- Servidores ICE (STUN/TURN) para o WebRTC ---
+router.get('/ice-servers', requireAuth, async (req, res) => {
+  const iceServers = await getIceServers();
+  return res.json({ iceServers, hasTurn: hasTurnConfigured(iceServers) });
+});
 
 // --- Rota de Token LiveKit ---
 router.post('/livekit/token', requireAuth, async (req, res) => {

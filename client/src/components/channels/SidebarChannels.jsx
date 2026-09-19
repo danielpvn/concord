@@ -93,7 +93,7 @@ export const SidebarChannels = () => {
               >
                 <button
                   onClick={() => handleSelectChannel(channel.id)}
-                  className={`w-full flex items-center gap-3 p-2 rounded-xl transition ${
+                  className={`w-full flex items-center gap-3 p-2.5 md:p-2 rounded-xl transition ${
                     isActive
                       ? 'bg-gaming-800 text-white font-medium border border-gaming-700/80 shadow-sm'
                       : 'text-slate-400 hover:text-slate-200 hover:bg-gaming-850'
@@ -105,7 +105,7 @@ export const SidebarChannels = () => {
 
                   {showFullNames && (
                     <div className="flex-1 flex items-center justify-between min-w-0">
-                      <span className="text-xs truncate">{channel.name}</span>
+                      <span className="text-sm md:text-xs truncate">{channel.name}</span>
                       {usersInRoom.length > 0 && (
                         <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-mono flex items-center gap-1">
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
@@ -168,7 +168,7 @@ export const SidebarChannels = () => {
               <button
                 key={channel.id}
                 onClick={() => handleSelectChannel(channel.id)}
-                className={`w-full flex items-center gap-3 p-2 rounded-xl transition ${
+                className={`w-full flex items-center gap-3 p-2.5 md:p-2 rounded-xl transition ${
                   isActive
                     ? 'bg-gaming-800 text-white font-medium border border-gaming-700/80 shadow-sm'
                     : 'text-slate-400 hover:text-slate-200 hover:bg-gaming-850'
@@ -177,7 +177,7 @@ export const SidebarChannels = () => {
                 <div className="flex-shrink-0 flex items-center justify-center w-7 h-7 rounded-lg bg-gaming-950/60">
                   <Hash className="w-4 h-4 text-slate-400" />
                 </div>
-                {showFullNames && <span className="text-xs truncate">{channel.name}</span>}
+                {showFullNames && <span className="text-sm md:text-xs truncate">{channel.name}</span>}
               </button>
             );
           })}
@@ -198,7 +198,7 @@ export const SidebarChannels = () => {
 
       {/* 📱 MOBILE: Menu deslizante (Drawer) off-canvas */}
       {isMobileMenuOpen && (
-        <aside className="fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] bg-gaming-900 border-r border-gaming-800 flex flex-col shadow-2xl md:hidden animate-slide-in">
+        <aside className="fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] bg-gaming-900 border-r border-gaming-800 flex flex-col shadow-2xl md:hidden animate-slide-in pt-safe pb-safe">
           <div className="flex items-center justify-between p-3 border-b border-gaming-800/80">
             <div className="flex items-center gap-2.5">
               <div className="w-9 h-9 rounded-2xl bg-gradient-to-br from-indigo-500/15 to-purple-600/15 border border-indigo-500/30 flex items-center justify-center p-1">
@@ -208,7 +208,8 @@ export const SidebarChannels = () => {
             </div>
             <button
               onClick={() => setIsMobileMenuOpen(false)}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-gaming-800 transition"
+              aria-label="Fechar menu"
+              className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-gaming-800 transition"
             >
               <X className="w-5 h-5" />
             </button>

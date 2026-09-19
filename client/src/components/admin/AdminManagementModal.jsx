@@ -110,7 +110,7 @@ export const AdminManagementModal = ({ isOpen, onClose }) => {
   return (
     <>
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
-        <div className="w-full max-w-xl bg-gaming-900 border border-gaming-700/80 rounded-2xl p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+        <div className="w-full max-w-xl bg-gaming-900 border border-gaming-700/80 rounded-2xl p-4 sm:p-6 shadow-2xl relative max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain">
           {/* Topo do modal */}
           <div className="flex items-center justify-between pb-4 border-b border-gaming-800">
             <div className="flex items-center gap-2.5">

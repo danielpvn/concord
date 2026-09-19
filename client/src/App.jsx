@@ -32,12 +32,12 @@ export const App = () => {
   }
 
   return (
-    <div className="flex flex-col h-[100dvh] w-screen max-w-full bg-gaming-950 text-slate-100 overflow-hidden font-sans">
+    <div className="flex flex-col h-[100dvh] w-full bg-gaming-950 text-slate-100 overflow-hidden font-sans pt-safe">
       {/* Banner de Atualização Automática de Novas Versões */}
       <UpdateBanner />
 
       {/* Área Principal: Sidebar de Canais + Grid Central de Voz/Tela + Gaveta de Chat */}
-      <div className="flex flex-1 overflow-hidden relative">
+      <div className="flex flex-1 min-h-0 overflow-hidden relative">
         <SidebarChannels />
         <VoiceGrid />
         <ChatDrawer />

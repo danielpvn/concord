@@ -86,7 +86,7 @@ export const ChatDrawer = () => {
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      className="relative flex flex-col w-80 md:w-96 h-full bg-gaming-900 border-l border-gaming-800 shadow-2xl z-40 animate-slide-in"
+      className="fixed inset-0 z-50 flex flex-col bg-gaming-900 pt-safe animate-slide-up md:animate-none md:pt-0 md:relative md:inset-auto md:z-40 md:w-96 md:h-full md:border-l md:border-gaming-800 md:shadow-2xl"
     >
       {/* Overlay de Drag and Drop de Imagem */}
       {isDraggingFile && (
@@ -98,23 +98,24 @@ export const ChatDrawer = () => {
       )}
 
       {/* Cabeçalho do Chat */}
-      <div className="flex items-center justify-between p-4 border-b border-gaming-800 bg-gaming-950/50">
-        <div>
-          <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+      <div className="flex items-center justify-between gap-3 px-4 py-3 md:p-4 border-b border-gaming-800 bg-gaming-950/50">
+        <div className="min-w-0">
+          <h3 className="text-sm font-bold text-white flex items-center gap-1.5 truncate">
             <span>💬</span> Chat #{activeChannel?.name || 'Geral'}
           </h3>
           <p className="text-[10px] text-slate-400">Mensagens e Imagens da Web</p>
         </div>
         <button
           onClick={() => setIsChatOpen(false)}
-          className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-gaming-800 transition"
+          title="Fechar chat"
+          className="p-2 -mr-1 rounded-lg text-slate-400 hover:text-white hover:bg-gaming-800 transition"
         >
-          <X className="w-4 h-4" />
+          <X className="w-5 h-5 md:w-4 md:h-4" />
         </button>
       </div>
 
       {/* Lista de Mensagens */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto overscroll-contain p-3 md:p-4 space-y-4">
         {messages.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-center text-slate-500 py-12">
             <span className="text-3xl mb-2">💬</span>
@@ -145,7 +146,7 @@ export const ChatDrawer = () => {
                   </div>
 
                   {msg.content && !isImageLink && (
-                    <div className="text-xs text-slate-300 break-words leading-relaxed bg-gaming-950/60 p-2.5 rounded-xl border border-gaming-800/60">
+                    <div className="text-sm md:text-xs text-slate-300 break-words select-text leading-relaxed bg-gaming-950/60 p-2.5 rounded-xl border border-gaming-800/60">
                       {msg.content}
                     </div>
                   )}
@@ -203,7 +204,7 @@ export const ChatDrawer = () => {
       </div>
 
       {/* Input de Envio */}
-      <div className="p-3 border-t border-gaming-800 bg-gaming-950/80">
+      <div className="p-2.5 md:p-3 pb-[max(0.625rem,env(safe-area-inset-bottom))] md:pb-3 border-t border-gaming-800 bg-gaming-950/80">
         <form onSubmit={handleSendMessage} className="flex items-center gap-2">
           <input
             type="file"
@@ -219,26 +220,26 @@ export const ChatDrawer = () => {
             onClick={() => fileInputRef.current?.click()}
             title="Enviar Imagem / Arquivo do PC"
             disabled={isUploading}
-            className="p-2 rounded-xl bg-gaming-800 hover:bg-gaming-700 text-slate-300 hover:text-white transition disabled:opacity-50"
+            className="flex-shrink-0 p-2.5 md:p-2 rounded-xl bg-gaming-800 hover:bg-gaming-700 text-slate-300 hover:text-white transition disabled:opacity-50"
           >
-            <ImageIcon className="w-4 h-4" />
+            <ImageIcon className="w-5 h-5 md:w-4 md:h-4" />
           </button>
 
           <input
             type="text"
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
-            placeholder={isUploading ? 'Enviando arquivo...' : `Mensagem ou link de foto em #${activeChannel?.name || 'chat'}...`}
+            placeholder={isUploading ? 'Enviando arquivo...' : `Mensagem em #${activeChannel?.name || 'chat'}`}
             disabled={isUploading}
-            className="flex-1 px-3.5 py-2 bg-gaming-900 border border-gaming-700/80 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-gaming-accent transition"
+            className="flex-1 min-w-0 px-3.5 py-2.5 md:py-2 bg-gaming-900 border border-gaming-700/80 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-gaming-accent transition"
           />
 
           <button
             type="submit"
             disabled={!inputText.trim() || isUploading}
-            className="p-2 rounded-xl bg-gaming-accent hover:bg-indigo-600 text-white transition disabled:opacity-40"
+            className="flex-shrink-0 p-2.5 md:p-2 rounded-xl bg-gaming-accent hover:bg-indigo-600 text-white transition disabled:opacity-40"
           >
-            <Send className="w-4 h-4" />
+            <Send className="w-5 h-5 md:w-4 md:h-4" />
           </button>
         </form>
       </div>

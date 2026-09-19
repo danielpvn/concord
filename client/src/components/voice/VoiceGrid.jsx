@@ -4,9 +4,7 @@ import { useVoice } from '../../context/VoiceContext';
 import { useAuth } from '../../context/AuthContext';
 import { Avatar } from '../ui/Avatar';
 import {
-  Mic,
   MicOff,
-  Headphones,
   Crown,
   Shield,
   Volume2,
@@ -16,26 +14,78 @@ import {
   MoreVertical,
   MoveRight,
   UserX,
-  Menu
+  Menu,
+  AlertTriangle
 } from 'lucide-react';
+
+const MENU_WIDTH = 220;
+
+const RoleBadge = ({ role }) => {
+  if (role === 'OWNER') {
+    return (
+      <span className="px-1.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/30 text-amber-400 text-[9px] md:text-[10px] font-bold inline-flex items-center gap-1">
+        <Crown className="w-3 h-3" />
+        DONO
+      </span>
+    );
+  }
+  if (role === 'ADMIN') {
+    return (
+      <span className="px-1.5 py-0.5 rounded-full bg-indigo-500/20 border border-indigo-500/30 text-indigo-400 text-[9px] md:text-[10px] font-bold inline-flex items-center gap-1">
+        <Shield className="w-3 h-3" />
+        ADMIN
+      </span>
+    );
+  }
+  return null;
+};
+
+const connectionLabel = (state) => {
+  if (!state || state === 'connected') return null;
+  if (state === 'failed' || state === 'disconnected') {
+    return { text: 'Sem conexão de áudio', className: 'text-red-400' };
+  }
+  return { text: 'Conectando áudio…', className: 'text-amber-400' };
+};
+
+const MobileHeader = ({ onOpenMenu, label, count }) => (
+  <div className="md:hidden flex items-center justify-between gap-2 pb-2.5 mb-2 border-b border-gaming-800/80">
+    <button
+      onClick={onOpenMenu}
+      className="flex items-center gap-2 min-w-0 h-10 px-3 rounded-xl bg-gaming-900 border border-gaming-700 text-white active:scale-95 transition shadow-sm"
+    >
+      <Menu className="w-5 h-5 text-indigo-400 flex-shrink-0" />
+      <span className="text-sm font-bold truncate">{label}</span>
+    </button>
+
+    {count !== undefined && (
+      <div className="flex-shrink-0 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gaming-900/90 border border-gaming-800 text-[11px] text-slate-400 font-mono">
+        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+        <span>{count} na sala</span>
+      </div>
+    )}
+  </div>
+);
 
 export const VoiceGrid = () => {
   const { socket, onlineUsers, activeChannel, activeChannelId, adminServerMute, adminKickVoice, adminMoveUser, channels, setIsMobileMenuOpen } = useSocket();
-  const { user, isAdmin, isOwner } = useAuth();
+  const { user, isAdmin } = useAuth();
   const {
     isSpeaking,
     isMuted,
     isDeafened,
     isScreenSharing,
     screenStream,
-    remoteStreams,
     remoteScreenStreams,
+    peerStates,
+    micError,
     userVolumes,
     setUserVolume
   } = useVoice();
 
   const [contextMenu, setContextMenu] = useState(null);
   const videoRef = useRef(null);
+
   // Filtra amigos conectados na mesma sala de voz ativa (e garante presença do usuário local)
   const roomUsers = React.useMemo(() => {
     if (!activeChannelId) return [];
@@ -51,10 +101,10 @@ export const VoiceGrid = () => {
           role: user.role,
           isServerMuted: user.isServerMuted,
           channelId: activeChannelId,
-          isMuted: isMuted,
-          isDeafened: isDeafened,
-          isSpeaking: isSpeaking,
-          isScreenSharing: isScreenSharing
+          isMuted,
+          isDeafened,
+          isSpeaking,
+          isScreenSharing
         },
         ...inRoom
       ];
@@ -62,33 +112,54 @@ export const VoiceGrid = () => {
     return inRoom;
   }, [onlineUsers, activeChannelId, user, activeChannel, socket?.id, isMuted, isDeafened, isSpeaking, isScreenSharing]);
 
-  // Encontra se alguém está compartilhando tela na sala (local ou remoto)
-  const remoteScreenUser = roomUsers.find(u => (u.isScreenSharing || remoteScreenStreams[u.socketId]) && u.userId !== user?.id);
+  // Transmissão ativa: a minha, ou a primeira de um amigo que já chegou
+  const remoteScreenUser = roomUsers.find(u => u.userId !== user?.id && remoteScreenStreams[u.socketId]);
   const activeScreenStream = isScreenSharing
     ? screenStream
-    : (remoteScreenUser && remoteScreenStreams[remoteScreenUser.socketId]) || Object.values(remoteScreenStreams || {})[0];
+    : remoteScreenUser
+      ? remoteScreenStreams[remoteScreenUser.socketId]
+      : null;
+  const pendingScreenUser = !activeScreenStream && roomUsers.find(u => u.userId !== user?.id && u.isScreenSharing);
 
   useEffect(() => {
-    if (videoRef.current && activeScreenStream) {
-      videoRef.current.srcObject = activeScreenStream;
-      videoRef.current.play().catch(console.warn);
+    const video = videoRef.current;
+    if (video && activeScreenStream) {
+      video.srcObject = activeScreenStream;
+      video.play().catch(() => {});
     }
   }, [activeScreenStream]);
 
   useEffect(() => {
-    const handleClickOutside = () => setContextMenu(null);
-    window.addEventListener('click', handleClickOutside);
-    return () => window.removeEventListener('click', handleClickOutside);
+    const close = () => setContextMenu(null);
+    window.addEventListener('click', close);
+    window.addEventListener('resize', close);
+    return () => {
+      window.removeEventListener('click', close);
+      window.removeEventListener('resize', close);
+    };
   }, []);
 
-  const handleContextMenu = (e, targetUser) => {
-    e.preventDefault();
-    if (!isAdmin) return;
+  const openModerationMenu = (x, y, targetUser) => {
+    if (!isAdmin || targetUser.userId === user?.id) return;
+    const optionCount = 2 + channels.filter(c => c.type === 'voice' && c.id !== activeChannelId).length;
+    const estimatedHeight = 40 + optionCount * 36;
     setContextMenu({
-      x: e.clientX,
-      y: e.clientY,
+      x: Math.max(8, Math.min(x, window.innerWidth - MENU_WIDTH - 8)),
+      y: Math.max(8, Math.min(y, window.innerHeight - estimatedHeight - 8)),
       targetUser
     });
+  };
+
+  const handleContextMenu = (e, targetUser) => {
+    if (!isAdmin) return;
+    e.preventDefault();
+    openModerationMenu(e.clientX, e.clientY, targetUser);
+  };
+
+  const handleMenuButton = (e, targetUser) => {
+    e.stopPropagation();
+    const rect = e.currentTarget.getBoundingClientRect();
+    openModerationMenu(rect.right - MENU_WIDTH, rect.bottom + 4, targetUser);
   };
 
   const handleDragStart = (e, userId) => {
@@ -97,227 +168,247 @@ export const VoiceGrid = () => {
     }
   };
 
-  const isTextChannel = activeChannel?.type === 'text';
+  const enterFullscreen = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (video.requestFullscreen) {
+      video.requestFullscreen().catch(() => {});
+    } else if (video.webkitEnterFullscreen) {
+      video.webkitEnterFullscreen(); // iPhone
+    }
+  };
 
-  if (isTextChannel) {
+  const openMobileMenu = () => setIsMobileMenuOpen(true);
+
+  if (!activeChannel) {
     return (
-      <div className="flex-1 flex flex-col h-full bg-gaming-950 p-4 sm:p-8 overflow-hidden relative">
-        {/* 📱 Barra Superior Mobile */}
-        <div className="md:hidden flex items-center justify-between pb-3 mb-4 border-b border-gaming-800">
-          <button
-            onClick={() => setIsMobileMenuOpen(true)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gaming-900 border border-gaming-700 text-white active:scale-95 transition shadow-sm"
-          >
-            <Menu className="w-4 h-4 text-indigo-400" />
-            <span className="text-xs font-bold truncate max-w-[150px]">💬 #{activeChannel?.name}</span>
-          </button>
+      <div className="flex-1 min-w-0 flex flex-col h-full bg-gaming-950 p-3 sm:p-6 overflow-hidden">
+        <MobileHeader onOpenMenu={openMobileMenu} label="Escolher canal" />
+        <div className="flex-1 flex flex-col items-center justify-center text-center text-slate-500 px-4">
+          <p className="text-base font-medium">Você não está em nenhum canal.</p>
+          <p className="text-xs mt-1 text-slate-600">Escolha um canal de voz para conversar com seus amigos.</p>
         </div>
+      </div>
+    );
+  }
 
-        <div className="flex-1 flex flex-col items-center justify-center text-center">
+  if (activeChannel.type === 'text') {
+    return (
+      <div className="flex-1 min-w-0 flex flex-col h-full bg-gaming-950 p-3 sm:p-8 overflow-hidden relative">
+        <MobileHeader onOpenMenu={openMobileMenu} label={`# ${activeChannel.name}`} />
+
+        <div className="flex-1 flex flex-col items-center justify-center text-center px-4">
           <div className="w-16 h-16 rounded-3xl bg-gaming-900 border border-gaming-800 flex items-center justify-center text-3xl mb-4 shadow-xl">
             💬
           </div>
-          <h2 className="text-xl font-bold text-white mb-2">Canal de Texto #{activeChannel?.name}</h2>
+          <h2 className="text-lg sm:text-xl font-bold text-white mb-2">Canal de Texto #{activeChannel.name}</h2>
           <p className="text-sm text-slate-400 max-w-md">
-            Abra a gaveta de chat para conversar, enviar prints ou arrastar imagens para seus amigos.
+            Abra o chat para conversar, enviar prints ou arrastar imagens para seus amigos.
           </p>
         </div>
       </div>
     );
   }
 
-  return (
-    <div className="flex-1 flex flex-col h-full bg-gaming-950 p-3 sm:p-6 overflow-hidden relative">
-      {/* 📱 Barra Superior Mobile (Cabeçalho do Canal e Botão de Menu) */}
-      <div className="md:hidden flex items-center justify-between pb-2.5 mb-2 border-b border-gaming-800/80">
-        <button
-          onClick={() => setIsMobileMenuOpen(true)}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gaming-900 border border-gaming-700 text-white active:scale-95 transition shadow-sm"
-        >
-          <Menu className="w-4 h-4 text-indigo-400" />
-          <span className="text-xs font-bold truncate max-w-[150px]">
-            {activeChannel ? `🔊 #${activeChannel.name}` : 'Canais de Voz'}
-          </span>
-        </button>
+  const renderParticipantChip = (u) => {
+    const isCurrentUser = u.userId === user?.id;
+    const isUserSpeaking = isCurrentUser ? isSpeaking : u.isSpeaking;
+    const isUserMuted = isCurrentUser ? isMuted || user?.isServerMuted : u.isMuted || u.isServerMuted;
 
-        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gaming-900/90 border border-gaming-800 text-[11px] text-slate-400 font-mono">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          <span>{roomUsers.length} na sala</span>
+    return (
+      <div
+        key={u.socketId || u.userId}
+        className={`flex-shrink-0 flex items-center gap-2 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl bg-gaming-900 border transition ${
+          isUserSpeaking ? 'border-emerald-400 ring-2 ring-emerald-500/40' : 'border-gaming-800'
+        }`}
+      >
+        <Avatar username={u.username} avatarColor={u.avatarColor} avatarUrl={u.avatarUrl} size="sm" isSpeaking={isUserSpeaking} />
+        <div className="flex flex-col min-w-0">
+          <span className="text-xs font-medium text-slate-200 truncate max-w-[80px]">{u.username}</span>
+          <span className="text-[10px] text-slate-500">
+            {isUserMuted ? 'Mutado' : isUserSpeaking ? 'Falando' : 'Ouvindo'}
+          </span>
         </div>
       </div>
+    );
+  };
 
-      {/* Transmissão de Tela Ativa */}
+  const renderTile = (u) => {
+    const isCurrentUser = u.userId === user?.id;
+    const isUserSpeaking = isCurrentUser ? isSpeaking : u.isSpeaking;
+    const isUserMuted = isCurrentUser ? isMuted || user?.isServerMuted : u.isMuted || u.isServerMuted;
+    const currentVolume = userVolumes[u.userId] ?? 100;
+    const connection = isCurrentUser ? null : connectionLabel(peerStates[u.socketId]);
+    const canModerate = isAdmin && !isCurrentUser;
+
+    return (
+      <div
+        key={u.socketId || u.userId}
+        draggable={isAdmin}
+        onDragStart={(e) => handleDragStart(e, u.userId)}
+        onContextMenu={(e) => handleContextMenu(e, u)}
+        className={`relative flex flex-col items-center p-3 pt-4 sm:p-5 rounded-2xl bg-gaming-900/90 border transition-all duration-200 group shadow-lg min-w-0 ${
+          isUserSpeaking
+            ? 'border-emerald-400 ring-2 sm:ring-4 ring-emerald-500/30'
+            : 'border-gaming-800 hover:border-gaming-700'
+        } ${isAdmin ? 'md:cursor-grab md:active:cursor-grabbing' : ''}`}
+      >
+        {/* Indicadores de Mudo / Som */}
+        <div className="absolute top-2 left-2 flex items-center gap-1">
+          {isUserMuted && (
+            <div className="p-1 rounded-lg bg-red-500/20 text-red-400 border border-red-500/30" title="Microfone Mutado">
+              <MicOff className="w-3.5 h-3.5" />
+            </div>
+          )}
+          {u.isDeafened && (
+            <div className="p-1 rounded-lg bg-red-500/20 text-red-400 border border-red-500/30" title="Fone Desativado">
+              <VolumeX className="w-3.5 h-3.5" />
+            </div>
+          )}
+        </div>
+
+        {/* Menu de moderação (funciona no toque, sem clique direito) */}
+        {canModerate && (
+          <button
+            onClick={(e) => handleMenuButton(e, u)}
+            title="Moderar"
+            aria-label={`Moderar ${u.username}`}
+            className="absolute top-1.5 right-1.5 p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-gaming-800 transition"
+          >
+            <MoreVertical className="w-4 h-4" />
+          </button>
+        )}
+
+        {/* Avatar */}
+        <div className="relative mb-2 sm:mb-3">
+          <Avatar
+            username={u.username}
+            avatarColor={u.avatarColor}
+            avatarUrl={u.avatarUrl}
+            size="lg"
+            className="sm:w-20 sm:h-20 sm:text-2xl"
+            isSpeaking={isUserSpeaking}
+          />
+          {isUserSpeaking && (
+            <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center ring-2 ring-gaming-900 shadow-md">
+              <Volume2 className="w-3 h-3 text-white" />
+            </div>
+          )}
+        </div>
+
+        {/* Nome e cargo */}
+        <h3 className="text-sm font-bold text-white truncate max-w-full text-center">
+          {u.username}
+          {isCurrentUser && <span className="text-[10px] text-slate-400 font-normal"> (Você)</span>}
+        </h3>
+        {(u.role === 'OWNER' || u.role === 'ADMIN') && (
+          <div className="mt-1">
+            <RoleBadge role={u.role} />
+          </div>
+        )}
+
+        {connection && (
+          <span className={`mt-1 text-[10px] font-medium ${connection.className}`}>{connection.text}</span>
+        )}
+
+        {/* Volume individual: sempre visível no toque, aparece no hover no desktop */}
+        {!isCurrentUser && (
+          <div className="w-full mt-2.5 pt-2.5 border-t border-gaming-800/80 flex items-center gap-2 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity">
+            <Volume2 className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+            <input
+              type="range"
+              min="0"
+              max="100"
+              step="5"
+              value={Math.min(100, currentVolume)}
+              onChange={(e) => setUserVolume(u.userId, parseInt(e.target.value, 10))}
+              aria-label={`Volume de ${u.username}`}
+              className="w-full min-w-0 h-1.5 bg-gaming-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+            />
+            <span className="text-[10px] font-mono text-slate-400 w-8 text-right flex-shrink-0">{Math.min(100, currentVolume)}%</span>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div className="flex-1 min-w-0 flex flex-col h-full bg-gaming-950 p-3 sm:p-6 overflow-hidden relative">
+      <MobileHeader onOpenMenu={openMobileMenu} label={`🔊 ${activeChannel.name}`} count={roomUsers.length} />
+
+      {micError && (
+        <div className="mb-2 sm:mb-4 flex items-start gap-2 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs">
+          <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+          <span>{micError}</span>
+        </div>
+      )}
+
       {activeScreenStream ? (
-        <div className="flex-1 flex flex-col h-full gap-3 sm:gap-4 min-h-0">
-          <div className="relative flex-1 bg-black rounded-2xl overflow-hidden border border-gaming-800 flex items-center justify-center group shadow-2xl">
+        <div className="flex-1 flex flex-col gap-3 sm:gap-4 min-h-0">
+          <div className="relative flex-1 min-h-0 bg-black rounded-2xl overflow-hidden border border-gaming-800 flex items-center justify-center group shadow-2xl">
             <video
               ref={videoRef}
               autoPlay
               playsInline
+              // A prévia da minha própria tela fica muda para não gerar eco do áudio do sistema
+              muted={isScreenSharing || isDeafened}
               className="w-full h-full object-contain"
             />
 
-            {/* Badge de Transmissão */}
-            <div className="absolute top-3 left-3 sm:top-4 sm:left-4 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-xl bg-black/60 backdrop-blur-md border border-white/10 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-              <span className="text-xs font-semibold text-white tracking-wide flex items-center gap-1.5">
-                <Radio className="w-3.5 h-3.5 text-red-400" />
-                {isScreenSharing ? 'Sua Transmissão' : `Tela de ${remoteScreenUser?.username}`}
+            <div className="absolute top-2 left-2 sm:top-4 sm:left-4 max-w-[75%] px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-xl bg-black/60 backdrop-blur-md border border-white/10 flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse flex-shrink-0" />
+              <span className="text-xs font-semibold text-white tracking-wide flex items-center gap-1.5 truncate">
+                <Radio className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
+                <span className="truncate">{isScreenSharing ? 'Sua Transmissão' : `Tela de ${remoteScreenUser?.username}`}</span>
               </span>
             </div>
 
             <button
-              onClick={() => videoRef.current?.requestFullscreen()}
+              onClick={enterFullscreen}
               title="Tela Cheia"
-              className="absolute bottom-3 right-3 sm:bottom-4 sm:right-4 p-2 sm:p-2.5 rounded-xl bg-black/60 hover:bg-black/80 backdrop-blur-md text-white border border-white/10 transition transform group-hover:scale-105"
+              aria-label="Tela Cheia"
+              className="absolute bottom-2 right-2 sm:bottom-4 sm:right-4 p-2.5 rounded-xl bg-black/60 hover:bg-black/80 backdrop-blur-md text-white border border-white/10 transition"
             >
               <Maximize className="w-4 h-4" />
             </button>
           </div>
 
-          {/* Miniatura dos Participantes na parte inferior */}
-          <div className="h-20 sm:h-24 flex items-center gap-2 sm:gap-3 overflow-x-auto py-1 sm:py-2">
-            {roomUsers.map(u => {
-              const isCurrentUser = u.userId === user?.id;
-              const isUserSpeaking = isCurrentUser ? isSpeaking : u.isSpeaking;
-              const isUserMuted = isCurrentUser ? isMuted || user?.isServerMuted : u.isMuted || u.isServerMuted;
-
-              return (
-                <div
-                  key={u.socketId || u.userId}
-                  className={`flex-shrink-0 flex items-center gap-2 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl bg-gaming-900 border transition ${
-                    isUserSpeaking ? 'border-emerald-400 ring-2 ring-emerald-500/40' : 'border-gaming-800'
-                  }`}
-                >
-                  <Avatar
-                    username={u.username}
-                    avatarColor={u.avatarColor}
-                    avatarUrl={u.avatarUrl}
-                    size="sm"
-                    isSpeaking={isUserSpeaking}
-                  />
-                  <div className="flex flex-col">
-                    <span className="text-xs font-medium text-slate-200 truncate max-w-[70px] sm:max-w-[80px]">{u.username}</span>
-                    <span className="text-[10px] text-slate-500">
-                      {isUserMuted ? 'Mutado' : isUserSpeaking ? 'Falando' : 'Ouvindo'}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
+          <div className="flex-shrink-0 flex items-center gap-2 sm:gap-3 overflow-x-auto no-scrollbar py-1">
+            {roomUsers.map(renderParticipantChip)}
           </div>
         </div>
       ) : (
-        /* Grade Dinâmica de Avatares */
-        <div className="flex-1 flex flex-col justify-center min-h-0">
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+          {pendingScreenUser && (
+            <div className="mb-3 flex items-center gap-2 px-3 py-2 rounded-xl bg-gaming-900 border border-gaming-800 text-xs text-slate-300">
+              <Radio className="w-4 h-4 text-red-400 animate-pulse flex-shrink-0" />
+              <span className="truncate">Carregando a tela de {pendingScreenUser.username}…</span>
+            </div>
+          )}
+
           {roomUsers.length === 0 ? (
-            <div className="text-center text-slate-500 p-4">
+            <div className="h-full flex flex-col items-center justify-center text-center text-slate-500 p-4">
               <p className="text-base font-medium">Nenhum amigo neste canal de voz no momento.</p>
               <p className="text-xs mt-1 text-slate-600">Seus amigos podem entrar tocando no canal de voz.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-4 max-h-full overflow-y-auto p-1 sm:p-2">
-              {roomUsers.map(u => {
-                const isCurrentUser = u.userId === user?.id;
-                const isUserSpeaking = isCurrentUser ? isSpeaking : u.isSpeaking;
-                const isUserMuted = isCurrentUser ? isMuted || user?.isServerMuted : u.isMuted || u.isServerMuted;
-                const currentVolume = userVolumes[u.userId] ?? 100;
-
-                return (
-                  <div
-                    key={u.socketId || u.userId}
-                    draggable={isAdmin}
-                    onDragStart={(e) => handleDragStart(e, u.userId)}
-                    onContextMenu={(e) => handleContextMenu(e, u)}
-                    className={`relative flex flex-col items-center justify-center p-3.5 sm:p-6 rounded-xl sm:rounded-2xl bg-gaming-900/90 border transition-all duration-200 group shadow-lg ${
-                      isUserSpeaking
-                        ? 'border-emerald-400 ring-4 ring-emerald-500/30 scale-[1.02]'
-                        : 'border-gaming-800 hover:border-gaming-700'
-                    } ${isAdmin ? 'cursor-grab active:cursor-grabbing' : ''}`}
-                  >
-                    {/* Badge de Cargo */}
-                    <div className="absolute top-3 left-3 flex items-center gap-1.5">
-                      {u.role === 'OWNER' && (
-                        <span className="px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/30 text-amber-400 text-[10px] font-bold flex items-center gap-1">
-                          <Crown className="w-3 h-3 text-amber-400" />
-                          DONO
-                        </span>
-                      )}
-                      {u.role === 'ADMIN' && (
-                        <span className="px-2 py-0.5 rounded-full bg-indigo-500/20 border border-indigo-500/30 text-indigo-400 text-[10px] font-bold flex items-center gap-1">
-                          <Shield className="w-3 h-3 text-indigo-400" />
-                          ADMIN
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Indicadores de Mudo / Som */}
-                    <div className="absolute top-3 right-3 flex items-center gap-1">
-                      {isUserMuted && (
-                        <div className="p-1 rounded-lg bg-red-500/20 text-red-400 border border-red-500/30" title="Microfone Mutado">
-                          <MicOff className="w-3.5 h-3.5" />
-                        </div>
-                      )}
-                      {u.isDeafened && (
-                        <div className="p-1 rounded-lg bg-red-500/20 text-red-400 border border-red-500/30" title="Fone Desativado">
-                          <VolumeX className="w-3.5 h-3.5" />
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Avatar do Jogador com Imagem ou Letra */}
-                    <div className="relative mb-3 mt-2">
-                      <Avatar
-                        username={u.username}
-                        avatarColor={u.avatarColor}
-                        avatarUrl={u.avatarUrl}
-                        size="xl"
-                        isSpeaking={isUserSpeaking}
-                      />
-
-                      {isUserSpeaking && (
-                        <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center ring-2 ring-gaming-900 shadow-md">
-                          <Volume2 className="w-3 h-3 text-white" />
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Nome do Jogador */}
-                    <h3 className="text-sm font-bold text-white tracking-wide truncate max-w-[150px]">
-                      {u.username} {isCurrentUser && <span className="text-[10px] text-slate-400 font-normal">(Você)</span>}
-                    </h3>
-
-                    {/* Controle de Volume Individual por Amigo */}
-                    {!isCurrentUser && (
-                      <div className="w-full mt-3 pt-3 border-t border-gaming-800/80 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-2">
-                        <Volume2 className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-                        <input
-                          type="range"
-                          min="0"
-                          max="200"
-                          value={currentVolume}
-                          onChange={(e) => setUserVolume(u.userId, parseInt(e.target.value, 10))}
-                          className="w-full h-1 bg-gaming-700 rounded-lg appearance-none cursor-pointer accent-gaming-accent"
-                        />
-                        <span className="text-[10px] font-mono text-slate-400 w-7 text-right">{currentVolume}%</span>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+            <div className="min-h-full flex flex-col justify-start md:justify-center">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-4 p-0.5 sm:p-2">
+                {roomUsers.map(renderTile)}
+              </div>
             </div>
           )}
         </div>
       )}
 
-      {/* Menu de Contexto de Moderação */}
+      {/* Menu de Moderação */}
       {contextMenu && (
         <div
-          className="fixed z-50 w-52 bg-gaming-900 border border-gaming-700 rounded-xl shadow-2xl py-1.5 overflow-hidden text-xs"
-          style={{ top: contextMenu.y, left: contextMenu.x }}
+          className="fixed z-50 bg-gaming-900 border border-gaming-700 rounded-xl shadow-2xl py-1.5 overflow-hidden text-sm md:text-xs animate-fade-in"
+          style={{ top: contextMenu.y, left: contextMenu.x, width: MENU_WIDTH }}
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="px-3 py-1.5 border-b border-gaming-800 text-[10px] text-slate-400 font-semibold uppercase tracking-wider">
+          <div className="px-3 py-1.5 border-b border-gaming-800 text-[10px] text-slate-400 font-semibold uppercase tracking-wider truncate">
             Moderar: {contextMenu.targetUser.username}
           </div>
 
@@ -326,7 +417,7 @@ export const VoiceGrid = () => {
               adminServerMute(contextMenu.targetUser.userId, !contextMenu.targetUser.isServerMuted);
               setContextMenu(null);
             }}
-            className="w-full flex items-center gap-2 px-3 py-2 text-slate-300 hover:text-white hover:bg-gaming-800 transition text-left"
+            className="w-full flex items-center gap-2 px-3 py-2.5 md:py-2 text-slate-300 hover:text-white hover:bg-gaming-800 transition text-left"
           >
             <MicOff className="w-3.5 h-3.5 text-red-400" />
             <span>{contextMenu.targetUser.isServerMuted ? 'Desmutar no Servidor' : 'Mutar no Servidor'}</span>
@@ -339,10 +430,10 @@ export const VoiceGrid = () => {
                 adminMoveUser(contextMenu.targetUser.userId, c.id);
                 setContextMenu(null);
               }}
-              className="w-full flex items-center gap-2 px-3 py-2 text-slate-300 hover:text-white hover:bg-gaming-800 transition text-left"
+              className="w-full flex items-center gap-2 px-3 py-2.5 md:py-2 text-slate-300 hover:text-white hover:bg-gaming-800 transition text-left"
             >
-              <MoveRight className="w-3.5 h-3.5 text-indigo-400" />
-              <span>Mover para {c.name}</span>
+              <MoveRight className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" />
+              <span className="truncate">Mover para {c.name}</span>
             </button>
           ))}
 
@@ -351,7 +442,7 @@ export const VoiceGrid = () => {
               adminKickVoice(contextMenu.targetUser.userId);
               setContextMenu(null);
             }}
-            className="w-full flex items-center gap-2 px-3 py-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 transition text-left border-t border-gaming-800"
+            className="w-full flex items-center gap-2 px-3 py-2.5 md:py-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 transition text-left border-t border-gaming-800"
           >
             <UserX className="w-3.5 h-3.5" />
             <span>Desconectar da Voz</span>

@@ -8,6 +8,43 @@
     color: #f1f5f9;
     user-select: none;
     -webkit-font-smoothing: antialiased;
+    overscroll-behavior: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* iOS não deixa digitar em campos com user-select: none herdado do body */
+  input,
+  textarea,
+  [contenteditable] {
+    user-select: text;
+    -webkit-user-select: text;
+  }
+
+  /* Evita o zoom automático do iOS ao focar campos com fonte < 16px */
+  @media (max-width: 767px) {
+    input[type='text'],
+    input[type='password'],
+    input[type='email'],
+    input:not([type]),
+    textarea,
+    select {
+      font-size: 16px !important;
+    }
+  }
+}
+
+@layer utilities {
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .pt-safe {
+    padding-top: env(safe-area-inset-top);
+  }
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
   }
 }
 

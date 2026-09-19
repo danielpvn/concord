@@ -19,158 +19,189 @@ import {
   Shield
 } from 'lucide-react';
 
+// Botão padrão da barra: alvo de toque de 44px no celular, compacto no desktop
+const BarButton = ({ onClick, title, variant = 'default', disabled, children, className = '' }) => {
+  const variants = {
+    default: 'bg-gaming-800 text-slate-200 hover:bg-gaming-700 hover:text-white border-gaming-700',
+    danger: 'bg-red-500/20 text-red-400 border-red-500/30 hover:bg-red-500/30',
+    success: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/30',
+    owner: 'bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 border-amber-500/30',
+    accent: 'bg-gaming-accent text-white border-indigo-400/40',
+    ghost: 'bg-transparent text-slate-400 hover:text-red-400 hover:bg-red-500/10 border-transparent'
+  };
+
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      aria-label={title}
+      disabled={disabled}
+      className={`relative flex-1 md:flex-none min-w-0 max-w-[56px] md:max-w-none h-11 md:h-auto md:p-3 rounded-xl md:rounded-2xl border transition flex items-center justify-center active:scale-95 disabled:opacity-50 ${variants[variant]} ${className}`}
+    >
+      {children}
+    </button>
+  );
+};
+
+const iconClass = 'w-5 h-5 md:w-4 md:h-4';
+
 export const ControlBar = () => {
   const { user, isOwner, isAdmin, logout } = useAuth();
-  const { isMuted, isDeafened, isSpeaking, isScreenSharing, toggleMute, toggleDeafen, toggleScreenShare } = useVoice();
-  const { isChatOpen, setIsChatOpen, unreadChatCount, leaveChannel, activeChannelId } = useSocket();
+  const { isMuted, isDeafened, isSpeaking, isScreenSharing, micError, toggleMute, toggleDeafen, toggleScreenShare } = useVoice();
+  const { isChatOpen, setIsChatOpen, unreadChatCount, leaveChannel, activeChannel } = useSocket();
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
 
   const effectivelyMuted = isMuted || user?.isServerMuted;
+  const inVoice = activeChannel?.type === 'voice';
+  // Celulares (Android/iOS) não suportam captura de tela pelo navegador
+  const canScreenShare = typeof navigator !== 'undefined' && Boolean(navigator.mediaDevices?.getDisplayMedia);
+
+  const handleLogout = () => {
+    if (window.confirm('Deseja sair da sua conta?')) logout();
+  };
+
+  let statusText = inVoice ? 'Conectado à voz' : 'Online';
+  if (user?.isServerMuted) {
+    statusText = <span className="text-red-400 font-semibold">Mutado pelo Servidor</span>;
+  } else if (micError && inVoice) {
+    statusText = <span className="text-amber-400 font-semibold">Sem microfone</span>;
+  } else if (effectivelyMuted) {
+    statusText = 'Microfone Mudo';
+  } else if (isSpeaking) {
+    statusText = <span className="text-emerald-400 font-semibold">Falando</span>;
+  }
+
+  const unreadBadge = unreadChatCount > 99 ? '99+' : unreadChatCount;
 
   return (
     <>
-      <footer className="h-14 sm:h-16 bg-gaming-900 border-t border-gaming-800 px-1.5 sm:px-4 flex items-center justify-between z-30 select-none gap-1 sm:gap-3 w-full max-w-full overflow-hidden box-border">
-        {/* Lado Esquerdo: Perfil do Jogador Conectado */}
-        <div className="flex items-center gap-1.5 sm:gap-3 flex-shrink min-w-0 max-w-[85px] xs:max-w-[120px] sm:max-w-none sm:min-w-[140px]">
-          <div className="relative flex-shrink-0">
-            <Avatar
-              username={user?.username}
-              avatarColor={user?.avatarColor}
-              avatarUrl={user?.avatarUrl}
-              size="sm"
-              isSpeaking={isSpeaking}
-            />
-            {isSpeaking && (
-              <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 sm:w-3 sm:h-3 rounded-full bg-emerald-400 ring-2 ring-gaming-900 animate-pulse" />
-            )}
-          </div>
-
-          <div className="flex flex-col min-w-0 truncate">
-            <div className="flex items-center gap-0.5 sm:gap-1 truncate">
-              <span className="text-[11px] sm:text-xs font-bold text-white leading-tight truncate">
-                {user?.username}
-              </span>
-              {isOwner && <Crown className="w-3 h-3 text-amber-400 flex-shrink-0" title="Dono Supremo" />}
-              {!isOwner && isAdmin && <Shield className="w-3 h-3 text-indigo-400 flex-shrink-0" title="Administrador" />}
+      <footer className="bg-gaming-900 border-t border-gaming-800 z-30 select-none w-full pb-safe">
+        <div className="h-16 px-2 md:px-4 flex items-center justify-between gap-2 md:gap-3">
+          {/* Perfil do Jogador (tablet / desktop) */}
+          <div className="hidden sm:flex items-center gap-3 min-w-0 flex-shrink sm:min-w-[140px]">
+            <div className="relative flex-shrink-0">
+              <Avatar
+                username={user?.username}
+                avatarColor={user?.avatarColor}
+                avatarUrl={user?.avatarUrl}
+                size="sm"
+                isSpeaking={isSpeaking}
+              />
+              {isSpeaking && (
+                <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-400 ring-2 ring-gaming-900 animate-pulse" />
+              )}
             </div>
 
-            <span className="text-[9px] sm:text-[10px] text-slate-400 hidden sm:inline truncate">
-              {user?.isServerMuted ? (
-                <span className="text-red-400 font-semibold">Mutado pelo Servidor</span>
-              ) : effectivelyMuted ? (
-                'Microfone Mudo'
-              ) : isSpeaking ? (
-                <span className="text-emerald-400 font-semibold">Falando</span>
-              ) : (
-                'Conectado'
-              )}
-            </span>
+            <div className="flex flex-col min-w-0">
+              <div className="flex items-center gap-1 min-w-0">
+                <span className="text-xs font-bold text-white leading-tight truncate">{user?.username}</span>
+                {isOwner && <Crown className="w-3 h-3 text-amber-400 flex-shrink-0" title="Dono Supremo" />}
+                {!isOwner && isAdmin && <Shield className="w-3 h-3 text-indigo-400 flex-shrink-0" title="Administrador" />}
+              </div>
+              <span className="text-[10px] text-slate-400 truncate">{statusText}</span>
+            </div>
           </div>
-        </div>
 
-        {/* Centro: Controles de Áudio, Vídeo e Ações Gamers */}
-        <div className="flex items-center gap-0.5 xs:gap-1 sm:gap-2 flex-shrink-0">
-          {/* Botão de Microfone */}
-          <button
-            onClick={toggleMute}
-            disabled={user?.isServerMuted}
-            title={user?.isServerMuted ? 'Você foi mutado por um administrador' : effectivelyMuted ? 'Desmutar Microfone' : 'Mutar Microfone'}
-            className={`p-1.5 xs:p-2 sm:p-3 rounded-lg sm:rounded-2xl transition flex items-center justify-center shadow-sm sm:shadow-md ${
-              effectivelyMuted
-                ? 'bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30'
-                : 'bg-gaming-800 text-slate-200 hover:bg-gaming-700 hover:text-white border border-gaming-700'
-            } disabled:opacity-50`}
-          >
-            {effectivelyMuted ? <MicOff className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <Mic className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
-          </button>
-
-          {/* Botão de Ensurdecer */}
-          <button
-            onClick={toggleDeafen}
-            title={isDeafened ? 'Ativar Fone de Ouvido' : 'Ensurdecer (Mutar todo o Som)'}
-            className={`p-1.5 xs:p-2 sm:p-3 rounded-lg sm:rounded-2xl transition flex items-center justify-center shadow-sm sm:shadow-md ${
-              isDeafened
-                ? 'bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30'
-                : 'bg-gaming-800 text-slate-200 hover:bg-gaming-700 hover:text-white border border-gaming-700'
-            }`}
-          >
-            {isDeafened ? <VolumeX className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <Headphones className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
-          </button>
-
-          {/* Botão de Compartilhar Tela */}
-          <button
-            onClick={toggleScreenShare}
-            title={isScreenSharing ? 'Parar Compartilhamento de Tela' : 'Compartilhar Tela do Jogo'}
-            className={`p-1.5 xs:p-2 sm:p-3 rounded-lg sm:rounded-2xl transition flex items-center justify-center shadow-sm sm:shadow-md ${
-              isScreenSharing
-                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30 animate-pulse'
-                : 'bg-gaming-800 text-slate-200 hover:bg-gaming-700 hover:text-white border border-gaming-700'
-            }`}
-          >
-            <Tv className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-          </button>
-
-          {/* Botão de Configurações de Áudio & Perfil */}
-          <button
-            onClick={() => setIsSettingsOpen(true)}
-            title="Configurações de Áudio, Foto e Perfil"
-            className="p-1.5 xs:p-2 sm:p-3 rounded-lg sm:rounded-2xl bg-gaming-800 text-slate-200 hover:bg-gaming-700 hover:text-white border border-gaming-700 transition shadow-sm sm:shadow-md"
-          >
-            <Settings className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-          </button>
-
-          {/* Botão Exclusivo do Dono */}
-          {isOwner && (
-            <button
-              onClick={() => setIsAdminModalOpen(true)}
-              title="Gerenciar Administradores & Resetar Logins (Exclusivo do Dono)"
-              className="p-1.5 xs:p-2 sm:p-3 rounded-lg sm:rounded-2xl bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 border border-amber-500/30 transition shadow-sm sm:shadow-md flex items-center justify-center"
+          {/* Controles: no celular ocupam a largura toda, distribuídos por igual */}
+          <div className="flex flex-1 sm:flex-none items-center justify-between sm:justify-center gap-1.5 md:gap-2 min-w-0">
+            <BarButton
+              onClick={toggleMute}
+              disabled={user?.isServerMuted}
+              variant={effectivelyMuted ? 'danger' : 'default'}
+              title={user?.isServerMuted ? 'Você foi mutado por um administrador' : effectivelyMuted ? 'Desmutar Microfone' : 'Mutar Microfone'}
             >
-              <Crown className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-            </button>
-          )}
+              {effectivelyMuted ? <MicOff className={iconClass} /> : <Mic className={iconClass} />}
+            </BarButton>
 
-          {/* Desconectar da Voz */}
-          {activeChannelId && (
-            <button
-              onClick={leaveChannel}
-              title="Desconectar do Canal de Voz"
-              className="p-1.5 xs:p-2 sm:p-3 rounded-lg sm:rounded-2xl bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-500/30 transition shadow-sm sm:shadow-md flex items-center justify-center"
+            <BarButton
+              onClick={toggleDeafen}
+              variant={isDeafened ? 'danger' : 'default'}
+              title={isDeafened ? 'Ativar Fone de Ouvido' : 'Ensurdecer (Mutar todo o Som)'}
             >
-              <PhoneOff className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-            </button>
-          )}
-        </div>
+              {isDeafened ? <VolumeX className={iconClass} /> : <Headphones className={iconClass} />}
+            </BarButton>
 
-        {/* Lado Direito: Chat e Logout */}
-        <div className="flex items-center gap-0.5 xs:gap-1 sm:gap-2 flex-shrink-0 justify-end">
-          <button
-            onClick={() => setIsChatOpen(!isChatOpen)}
-            title="Abrir / Fechar Chat"
-            className={`relative p-1.5 xs:p-2 sm:p-2.5 px-2 xs:px-2.5 sm:px-3.5 rounded-lg sm:rounded-xl transition flex items-center gap-1 text-xs font-semibold ${
-              isChatOpen
-                ? 'bg-gaming-accent text-white shadow-sm sm:shadow-md shadow-indigo-500/20'
-                : 'bg-gaming-800 text-slate-300 hover:bg-gaming-700 hover:text-white border border-gaming-700'
-            }`}
-          >
-            <MessageSquare className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-            <span className="hidden md:inline">Chat</span>
-            {unreadChatCount > 0 && !isChatOpen && (
-              <span className="w-3.5 h-3.5 sm:w-5 sm:h-5 rounded-full bg-red-500 text-white text-[8px] sm:text-[10px] flex items-center justify-center font-bold animate-bounce">
-                {unreadChatCount}
-              </span>
+            {canScreenShare && inVoice && (
+              <BarButton
+                onClick={toggleScreenShare}
+                variant={isScreenSharing ? 'success' : 'default'}
+                title={isScreenSharing ? 'Parar Compartilhamento de Tela' : 'Compartilhar Tela do Jogo'}
+                className={isScreenSharing ? 'animate-pulse' : ''}
+              >
+                <Tv className={iconClass} />
+              </BarButton>
             )}
-          </button>
 
-          <button
-            onClick={logout}
-            title="Sair da Conta"
-            className="p-1.5 xs:p-2 sm:p-2.5 rounded-lg sm:rounded-xl text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition"
-          >
-            <LogOut className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-          </button>
+            {/* Chat (no celular fica junto dos controles) */}
+            <BarButton
+              onClick={() => setIsChatOpen(!isChatOpen)}
+              variant={isChatOpen ? 'accent' : 'default'}
+              title="Abrir / Fechar Chat"
+              className="md:hidden"
+            >
+              <MessageSquare className={iconClass} />
+              {unreadChatCount > 0 && !isChatOpen && (
+                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center font-bold">
+                  {unreadBadge}
+                </span>
+              )}
+            </BarButton>
+
+            <BarButton onClick={() => setIsSettingsOpen(true)} title="Configurações de Áudio, Foto e Perfil">
+              <Settings className={iconClass} />
+            </BarButton>
+
+            {isOwner && (
+              <BarButton
+                onClick={() => setIsAdminModalOpen(true)}
+                variant="owner"
+                title="Gerenciar Administradores & Resetar Logins (Exclusivo do Dono)"
+              >
+                <Crown className={iconClass} />
+              </BarButton>
+            )}
+
+            {inVoice && (
+              <BarButton onClick={leaveChannel} variant="danger" title="Desconectar do Canal de Voz">
+                <PhoneOff className={iconClass} />
+              </BarButton>
+            )}
+
+            <BarButton onClick={handleLogout} variant="ghost" title="Sair da Conta" className="md:hidden">
+              <LogOut className={iconClass} />
+            </BarButton>
+          </div>
+
+          {/* Lado Direito (desktop): Chat e Logout */}
+          <div className="hidden md:flex items-center gap-2 flex-shrink-0 justify-end">
+            <button
+              onClick={() => setIsChatOpen(!isChatOpen)}
+              title="Abrir / Fechar Chat"
+              className={`relative p-2.5 px-3.5 rounded-xl transition flex items-center gap-1.5 text-xs font-semibold ${
+                isChatOpen
+                  ? 'bg-gaming-accent text-white shadow-md shadow-indigo-500/20'
+                  : 'bg-gaming-800 text-slate-300 hover:bg-gaming-700 hover:text-white border border-gaming-700'
+              }`}
+            >
+              <MessageSquare className="w-4 h-4" />
+              <span>Chat</span>
+              {unreadChatCount > 0 && !isChatOpen && (
+                <span className="min-w-[20px] h-5 px-1 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center font-bold">
+                  {unreadBadge}
+                </span>
+              )}
+            </button>
+
+            <button
+              onClick={handleLogout}
+              title="Sair da Conta"
+              className="p-2.5 rounded-xl text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </footer>
 

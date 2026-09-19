@@ -7,8 +7,14 @@ const VoiceContext = createContext(null);
 const ICE_SERVERS = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' }
-  ]
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' },
+    { urls: 'stun:stun.services.mozilla.com' },
+    { urls: 'stun:stun.cloudflare.com:3478' }
+  ],
+  iceCandidatePoolSize: 10
 };
 
 export const VoiceProvider = ({ children }) => {
@@ -41,7 +47,8 @@ export const VoiceProvider = ({ children }) => {
   const audioContextRef = useRef(null);
   const analyserRef = useRef(null);
   const animationFrameRef = useRef(null);
-  const peerConnectionsRef = useRef({}); // socketId -> RTCPeerConnection
+  const peerConnectionsRef = useRef({}); // socketId_streamType -> RTCPeerConnection
+  const pendingIceCandidatesRef = useRef({}); // socketId_streamType -> [candidate, ...]
 
   // Salva sensibilidade
   const updateSensitivity = (val) => {
@@ -61,7 +68,9 @@ export const VoiceProvider = ({ children }) => {
   // Inicializa captura de microfone local e analisador de voz (VAD)
   const initMicrophone = useCallback(async () => {
     try {
-      if (localStreamRef.current) return localStreamRef.current;
+      if (localStreamRef.current && localStreamRef.current.active) {
+        return localStreamRef.current;
+      }
 
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -74,11 +83,38 @@ export const VoiceProvider = ({ children }) => {
 
       localStreamRef.current = stream;
 
+      // Se houver conexões WebRTC ativas aguardando microfone, atualiza os senders
+      const audioTrack = stream.getAudioTracks()[0];
+      if (audioTrack) {
+        Object.entries(peerConnectionsRef.current).forEach(([key, pc]) => {
+          if (key.endsWith('_audio')) {
+            const senders = pc.getSenders();
+            const sender = senders.find(s => s.track && s.track.kind === 'audio');
+            if (sender) {
+              sender.replaceTrack(audioTrack).catch(console.warn);
+            } else {
+              try {
+                pc.addTrack(audioTrack, stream);
+              } catch (e) {
+                console.warn('Aviso ao anexar faixa em conexão existente:', e);
+              }
+            }
+          }
+        });
+      }
+
       // Configura AudioContext para medidor de voz e detecção automática de fala
-      const AudioContext = window.AudioContext || window.webkitAudioContext;
-      if (AudioContext) {
-        const audioCtx = new AudioContext();
-        audioContextRef.current = audioCtx;
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (AudioContextClass) {
+        if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
+          audioContextRef.current = new AudioContextClass();
+        }
+        const audioCtx = audioContextRef.current;
+
+        if (audioCtx.state === 'suspended') {
+          audioCtx.resume().catch(console.warn);
+        }
+
         const source = audioCtx.createMediaStreamSource(stream);
         const analyser = audioCtx.createAnalyser();
         analyser.fftSize = 256;
@@ -117,12 +153,12 @@ export const VoiceProvider = ({ children }) => {
 
       return stream;
     } catch (err) {
-      console.warn('Não foi possível acessar o microfone:', err);
+      console.warn('Não foi possível acessar o microfone (modo ouvinte ativado):', err);
       return null;
     }
   }, [isMuted, user?.isServerMuted, sensitivityThreshold, socket]);
 
-  // Aplica Mute / Server Mute nos tracks de áudio
+  // Aplica Mute / Server Mute nas faixas locais de áudio
   useEffect(() => {
     const effectivelyMuted = isMuted || user?.isServerMuted;
     if (localStreamRef.current) {
@@ -160,12 +196,22 @@ export const VoiceProvider = ({ children }) => {
     };
 
     pc.ontrack = (event) => {
+      console.log(`🔊 [WebRTC] Fluxo de áudio recebido de ${targetSocketId} (${streamType})`);
       const [remoteStream] = event.streams;
+      const streamToUse = remoteStream || new MediaStream([event.track]);
       if (streamType === 'screen') {
-        setRemoteScreenStreams(prev => ({ ...prev, [targetSocketId]: remoteStream }));
+        setRemoteScreenStreams(prev => ({ ...prev, [targetSocketId]: streamToUse }));
       } else {
-        setRemoteStreams(prev => ({ ...prev, [targetSocketId]: remoteStream }));
+        setRemoteStreams(prev => ({ ...prev, [targetSocketId]: streamToUse }));
       }
+    };
+
+    pc.onconnectionstatechange = () => {
+      console.log(`📡 [WebRTC] Conexão com ${targetSocketId} (${streamType}): ${pc.connectionState}`);
+    };
+
+    pc.oniceconnectionstatechange = () => {
+      console.log(`🧊 [WebRTC] ICE com ${targetSocketId} (${streamType}): ${pc.iceConnectionState}`);
     };
 
     peerConnectionsRef.current[key] = pc;
@@ -174,55 +220,134 @@ export const VoiceProvider = ({ children }) => {
 
   // Inicia chamada WebRTC com usuário recém conectado na sala
   const initiatePeerCall = useCallback(async (targetSocketId, stream, streamType = 'audio') => {
-    if (!stream) return;
+    let activeStream = stream;
+    if (!activeStream && streamType === 'audio') {
+      try {
+        activeStream = await initMicrophone();
+      } catch (e) {
+        console.warn('Microfone não disponível de imediato:', e);
+      }
+    }
+
     const pc = getOrCreatePeerConnection(targetSocketId, streamType);
 
-    stream.getTracks().forEach(track => {
-      pc.addTrack(track, stream);
-    });
-
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-
-    if (socket) {
-      socket.emit('webrtc_signal', {
-        toSocketId: targetSocketId,
-        signal: { sdp: pc.localDescription },
-        streamType
+    if (activeStream) {
+      const senders = pc.getSenders();
+      activeStream.getTracks().forEach(track => {
+        const alreadyAdded = senders.some(s => s.track && s.track.id === track.id);
+        if (!alreadyAdded) {
+          pc.addTrack(track, activeStream);
+        }
       });
+    } else if (streamType === 'audio') {
+      // Modo ouvinte (recvonly): permite escutar os amigos mesmo sem microfone local
+      const transceivers = pc.getTransceivers();
+      if (!transceivers.some(t => t.receiver && t.receiver.track && t.receiver.track.kind === 'audio')) {
+        pc.addTransceiver('audio', { direction: 'recvonly' });
+      }
     }
-  }, [getOrCreatePeerConnection, socket]);
 
-  // Processa sinal WebRTC recebido
+    try {
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      if (socket) {
+        socket.emit('webrtc_signal', {
+          toSocketId: targetSocketId,
+          signal: { sdp: pc.localDescription },
+          streamType
+        });
+      }
+    } catch (err) {
+      console.error(`Erro ao criar oferta WebRTC para ${targetSocketId}:`, err);
+    }
+  }, [getOrCreatePeerConnection, socket, initMicrophone]);
+
+  // Processa sinal WebRTC recebido (Offer, Answer ou ICE Candidate)
   const handleWebRTCSignal = useCallback(async ({ fromSocketId, signal, streamType }) => {
+    const key = `${fromSocketId}_${streamType || 'audio'}`;
     const pc = getOrCreatePeerConnection(fromSocketId, streamType || 'audio');
 
-    if (signal.sdp) {
-      await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+    try {
+      if (signal.sdp) {
+        await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
 
-      if (signal.sdp.type === 'offer') {
-        const stream = streamType === 'screen' ? screenStream : localStreamRef.current;
-        if (stream) {
-          stream.getTracks().forEach(track => {
-            pc.addTrack(track, stream);
-          });
+        // Processa candidatos ICE pendentes que chegaram antes do setRemoteDescription
+        if (pendingIceCandidatesRef.current[key] && pendingIceCandidatesRef.current[key].length > 0) {
+          const queued = pendingIceCandidatesRef.current[key];
+          pendingIceCandidatesRef.current[key] = [];
+          for (const cand of queued) {
+            try {
+              await pc.addIceCandidate(new RTCIceCandidate(cand));
+            } catch (err) {
+              console.warn('Erro ao processar ICE candidate enfileirado:', err);
+            }
+          }
         }
 
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
+        if (signal.sdp.type === 'offer') {
+          let stream = streamType === 'screen' ? screenStream : localStreamRef.current;
+          if (!stream && streamType !== 'screen') {
+            try {
+              stream = await initMicrophone();
+            } catch (e) {
+              console.warn('Não foi possível obter microfone ao responder oferta:', e);
+            }
+          }
 
-        if (socket) {
-          socket.emit('webrtc_signal', {
-            toSocketId: fromSocketId,
-            signal: { sdp: pc.localDescription },
-            streamType: streamType || 'audio'
-          });
+          if (stream) {
+            const senders = pc.getSenders();
+            stream.getTracks().forEach(track => {
+              const alreadyAdded = senders.some(s => s.track && s.track.id === track.id);
+              if (!alreadyAdded) {
+                pc.addTrack(track, stream);
+              }
+            });
+          }
+
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+
+          if (socket) {
+            socket.emit('webrtc_signal', {
+              toSocketId: fromSocketId,
+              signal: { sdp: pc.localDescription },
+              streamType: streamType || 'audio'
+            });
+          }
+        }
+      } else if (signal.candidate) {
+        if (pc.remoteDescription && pc.remoteDescription.type) {
+          try {
+            await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+          } catch (err) {
+            console.warn('Erro ao adicionar ICE candidate recebido:', err);
+          }
+        } else {
+          if (!pendingIceCandidatesRef.current[key]) {
+            pendingIceCandidatesRef.current[key] = [];
+          }
+          pendingIceCandidatesRef.current[key].push(signal.candidate);
         }
       }
-    } else if (signal.candidate) {
-      await pc.addIceCandidate(new RTCIceCandidate(signal.candidate)).catch(console.warn);
+    } catch (err) {
+      console.error(`Erro ao processar sinal WebRTC de ${fromSocketId}:`, err);
     }
-  }, [getOrCreatePeerConnection, screenStream, socket]);
+  }, [getOrCreatePeerConnection, screenStream, socket, initMicrophone]);
+
+  // Limpeza de conexões e recursos de voz
+  const cleanupVoiceConnections = useCallback(() => {
+    Object.values(peerConnectionsRef.current).forEach(pc => {
+      try {
+        pc.close();
+      } catch (e) {}
+    });
+    peerConnectionsRef.current = {};
+    pendingIceCandidatesRef.current = {};
+    setRemoteStreams({});
+    setRemoteScreenStreams({});
+    setIsSpeaking(false);
+  }, []);
 
   // Escuta WebRTC sockets
   useEffect(() => {
@@ -231,27 +356,37 @@ export const VoiceProvider = ({ children }) => {
     socket.on('webrtc_signal', handleWebRTCSignal);
 
     socket.on('user_joined_voice', async ({ socketId }) => {
+      console.log(`👤 Amigo entrou na sala de voz: ${socketId}`);
       if (localStreamRef.current) {
         initiatePeerCall(socketId, localStreamRef.current, 'audio');
+      } else {
+        initiatePeerCall(socketId, null, 'audio');
       }
+
       if (screenStream) {
         initiatePeerCall(socketId, screenStream, 'screen');
       }
     });
 
     socket.on('user_left_voice', ({ socketId }) => {
+      console.log(`🚪 Amigo saiu da sala de voz: ${socketId}`);
       ['audio', 'screen'].forEach(type => {
         const key = `${socketId}_${type}`;
         if (peerConnectionsRef.current[key]) {
-          peerConnectionsRef.current[key].close();
+          try {
+            peerConnectionsRef.current[key].close();
+          } catch (e) {}
           delete peerConnectionsRef.current[key];
         }
+        delete pendingIceCandidatesRef.current[key];
       });
+
       setRemoteStreams(prev => {
         const next = { ...prev };
         delete next[socketId];
         return next;
       });
+
       setRemoteScreenStreams(prev => {
         const next = { ...prev };
         delete next[socketId];
@@ -266,12 +401,31 @@ export const VoiceProvider = ({ children }) => {
     };
   }, [socket, handleWebRTCSignal, initiatePeerCall, screenStream]);
 
-  // Ativa áudio se estiver em canal de voz
+  // Ativa áudio se estiver em canal de voz, ou limpa se sair
   useEffect(() => {
     if (activeChannel?.type === 'voice') {
       initMicrophone();
+    } else {
+      cleanupVoiceConnections();
     }
-  }, [activeChannel, initMicrophone]);
+  }, [activeChannel, initMicrophone, cleanupVoiceConnections]);
+
+  // Desbloqueio global de política de Autoplay / AudioContext suspenso
+  useEffect(() => {
+    const resumeAudio = () => {
+      if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+        audioContextRef.current.resume().catch(console.warn);
+      }
+    };
+    window.addEventListener('click', resumeAudio);
+    window.addEventListener('keydown', resumeAudio);
+    window.addEventListener('touchstart', resumeAudio);
+    return () => {
+      window.removeEventListener('click', resumeAudio);
+      window.removeEventListener('keydown', resumeAudio);
+      window.removeEventListener('touchstart', resumeAudio);
+    };
+  }, []);
 
   // Iniciar / Parar Compartilhamento de Tela (com áudio do sistema)
   const toggleScreenShare = async () => {
@@ -294,7 +448,6 @@ export const VoiceProvider = ({ children }) => {
           audio: true // Captura o som do jogo/sistema
         });
 
-        // Quando o usuário para o compartilhamento pela barra do navegador
         stream.getVideoTracks()[0].onended = () => {
           setScreenStream(null);
           setIsScreenSharing(false);
@@ -331,7 +484,8 @@ export const VoiceProvider = ({ children }) => {
         toggleMute,
         toggleDeafen,
         toggleScreenShare,
-        initMicrophone
+        initMicrophone,
+        cleanupVoiceConnections
       }}
     >
       {children}

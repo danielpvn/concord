@@ -5,6 +5,7 @@ import { SidebarChannels } from './components/channels/SidebarChannels';
 import { VoiceGrid } from './components/voice/VoiceGrid';
 import { ControlBar } from './components/controls/ControlBar';
 import { ChatDrawer } from './components/chat/ChatDrawer';
+import { RemoteAudioRenderer } from './components/voice/RemoteAudioRenderer';
 import { UpdateBanner } from './components/common/UpdateBanner';
 import concordLogo from './assets/concord-logo-transparent.png';
 import concordWordmark from './assets/concord-wordmark.webp';
@@ -41,6 +42,9 @@ export const App = () => {
         <VoiceGrid />
         <ChatDrawer />
       </div>
+
+      {/* Renderizador de Áudio P2P Contínuo para Amigos Conectados */}
+      <RemoteAudioRenderer />
 
       {/* Barra de Controles Inferior */}
       <ControlBar />

@@ -129,3 +129,29 @@ git push origin master
 - **Sempre verifique imports e desestruturações**: Em componentes React que usam `useSocket()`, `useVoice()` ou `useAuth()`, certifique-se de que todas as variáveis utilizadas (como `socket`, `videoRef`, etc.) estejam declaradas.
 - **Mantenha o build limpo**: Sempre teste rodando `npm run build` na pasta `client` após alterar código de frontend.
 - **Sincronize o Desktop**: Sempre que o frontend for atualizado, sincronize `client/dist` para `desktop/ui`.
+
+---
+
+## 🤖 7. Diretriz Obrigatória de Finalização (Auto-Commit & Auto-Deploy)
+
+> [!IMPORTANT]
+> **REGRA FUNDAMENTAL PARA O CLAUDE:**
+> Sempre que você concluir qualquer alteração, correção de bug ou nova funcionalidade, **você deve executar o fluxo completo de subida e deploy automaticamente**, sem que o usuário precise pedir:
+
+1. **Compilar e Sincronizar o Frontend:**
+   ```powershell
+   cmd /c "cd client && npm run build && xcopy /E /I /Y dist ..\desktop\ui"
+   ```
+2. **Commitar e Subir no Git:**
+   ```powershell
+   git add .
+   git commit -m "feat/fix: descrição resumida do que foi alterado"
+   git push origin master
+   ```
+3. **Acompanhar o Deploy no Render até ficar Live:**
+   Execute o script integrado de monitoramento (ele lê o `.env` local automaticamente):
+   ```powershell
+   node scripts/check-deploy.js
+   ```
+4. **Finalizar a Resposta:**
+   Somente encerre sua resposta ao usuário após confirmar que o deploy está `LIVE` e disponível em `https://concord-l08s.onrender.com`.
